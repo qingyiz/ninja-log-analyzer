@@ -1,0 +1,21 @@
+# Synthetic manifest used by the analyzer demo. It is not intended to be built.
+build old/CMakeFiles/core.dir/src/config.cpp.o: CXX_COMPILER__old old/config.cpp
+build old/CMakeFiles/core.dir/src/cache.cpp.o: CXX_COMPILER__old old/cache.cpp
+build old/CMakeFiles/gui.dir/src/window.cpp.o: CXX_COMPILER__old old/window.cpp
+build old/libcore.a: CXX_STATIC_LIBRARY_LINKER__old old/CMakeFiles/core.dir/src/config.cpp.o
+build old/NinjaDemo: CXX_EXECUTABLE_LINKER__old old/libcore.a
+
+build NinjaDemo_autogen/timestamp: NinjaDemo_autogen CMakeFiles/NinjaDemo_autogen
+build CMakeFiles/core.dir/src/hash.c.o: C_COMPILER__core src/hash.c
+build CMakeFiles/core.dir/src/parser.cpp.o: CXX_COMPILER__core src/parser.cpp
+build CMakeFiles/gui.dir/src/mainwindow.cpp.o: CXX_COMPILER__gui src/mainwindow.cpp
+build CMakeFiles/gui.dir/src/timeline.cpp.o: CXX_COMPILER__gui src/timeline.cpp
+build CMakeFiles/gui.dir/src/model.cpp.o: CXX_COMPILER__gui src/model.cpp
+build NinjaDemo_autogen/3YJK5W5UP7/qrc_icons.cpp: RCC_NinjaDemo resources/icons.qrc
+build generated/version.h: CUSTOM_COMMAND version.txt
+build CMakeFiles/core.dir/src/manifest.cpp.o: CXX_COMPILER__core src/manifest.cpp
+build CMakeFiles/core.dir/src/analyzer.cpp.o: CXX_COMPILER__core src/analyzer.cpp
+build libcore.a: CXX_STATIC_LIBRARY_LINKER__core CMakeFiles/core.dir/src/parser.cpp.o
+build libninja_plugin.dylib: CXX_SHARED_LIBRARY_LINKER__plugin libcore.a
+build tests/ninja_analyzer_tests: CUSTOM_COMMAND libcore.a
+build NinjaDemo: CXX_EXECUTABLE_LINKER__NinjaDemo libcore.a libninja_plugin.dylib

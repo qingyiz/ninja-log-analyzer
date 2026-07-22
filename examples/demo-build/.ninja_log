@@ -1,0 +1,20 @@
+# ninja log v5
+0	420	1720000000000	old/CMakeFiles/core.dir/src/config.cpp.o	1001
+20	580	1720000000100	old/CMakeFiles/core.dir/src/cache.cpp.o	1002
+80	760	1720000000200	old/CMakeFiles/gui.dir/src/window.cpp.o	1003
+420	980	1720000000300	old/libcore.a	1004
+820	1450	1720000000400	old/NinjaDemo	1005
+0	300	1720001000000	NinjaDemo_autogen/timestamp	2001
+20	500	1720001000100	CMakeFiles/core.dir/src/hash.c.o	2002
+30	650	1720001000200	CMakeFiles/core.dir/src/parser.cpp.o	2003
+100	900	1720001000300	CMakeFiles/gui.dir/src/mainwindow.cpp.o	2004
+200	1200	1720001000400	CMakeFiles/gui.dir/src/timeline.cpp.o	2005
+350	1600	1720001000500	CMakeFiles/gui.dir/src/model.cpp.o	2006
+1200	2000	1720001000600	NinjaDemo_autogen/3YJK5W5UP7/qrc_icons.cpp	2007
+0	2100	1720001000700	generated/version.h	2008
+600	2500	1720001000800	CMakeFiles/core.dir/src/manifest.cpp.o	2009
+300	2900	1720001000900	CMakeFiles/core.dir/src/analyzer.cpp.o	200a
+2500	3400	1720001001000	libcore.a	200b
+2800	3900	1720001001100	libninja_plugin.dylib	200c
+3400	4700	1720001001200	tests/ninja_analyzer_tests	200d
+3000	6000	1720001001300	NinjaDemo	200e
