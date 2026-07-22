@@ -33,13 +33,23 @@ ctest --test-dir build --output-on-failure
 
 Qt 5 只需把 `CMAKE_PREFIX_PATH` 指向 Qt 5 Kit。也可以把 Qt 的 `bin` 目录加入 PATH，让 CMake 自动发现。
 
-macOS 应用位于：
+macOS 开发应用位于：
 
 ```text
-build/Ninja Log Analyzer.app
+build/bin/Ninja Log Analyzer.app
 ```
 
 Linux/Windows 的可执行文件在所选构建目录中。源码避免平台专有 UI API；本次交付实际验证的平台是 macOS arm64，Qt 6.4.3 和 Qt 5.15.2。
+
+### macOS 部署应用
+
+开发 bundle 可以依赖当前 Qt Kit。需要得到已收集 Qt frameworks 和 platform plugin 的独立部署 bundle 时，在完成 Release 构建后执行：
+
+```bash
+cmake --install build --prefix "$PWD/build/stage"
+```
+
+产物位于 `build/stage/Ninja Log Analyzer.app`。安装步骤会使用当前 CMake 配置所对应 Qt Kit 的 `macdeployqt`，不会混用 Qt5/Qt6 工具。该 bundle 的最低系统版本为 macOS 11.0；本项目当前不生成 DMG/PKG，也不执行发布签名或公证。
 
 ### Qt 6.4 + 新版 Xcode SDK 的 AGL 说明
 
@@ -50,7 +60,7 @@ Linux/Windows 的可执行文件在所选构建目录中。源码避免平台专
 正常启动后粘贴日志/目录路径，也可以点击“选择日志”或“选择目录”。命令行传入路径会在窗口显示后自动加载：
 
 ```bash
-"build/Ninja Log Analyzer.app/Contents/MacOS/Ninja Log Analyzer" \
+"build/bin/Ninja Log Analyzer.app/Contents/MacOS/Ninja Log Analyzer" \
   examples/demo-build
 ```
 
@@ -72,9 +82,12 @@ Ninja 会跨运行追加日志，也可能重整日志；`.ninja_log` 不记录 
 ## 项目结构
 
 ```text
-src/core/   路径发现、日志/manifest 解析、分类与统计（只依赖 Qt Core）
-src/gui/    Qt Widgets 主窗口、虚拟慢任务表和 QPainter 时间线
-tests/      核心与 offscreen GUI 自动化测试
+src/core/          路径发现、日志/manifest 解析、分类与统计（只依赖 Qt Core）
+src/application/   无 Widgets 的加载与分析用例编排
+src/gui/           Qt Widgets 窗口壳、独立结果页、虚拟表和 QPainter 图表
+src/app/           进程入口与应用 bundle target
+cmake/             Qt 兼容和平台交付规则
+tests/             core、application 与 offscreen GUI 自动化测试
 examples/   可直接加载的合成 Ninja 构建目录
 .codex/     requirements/design/tasks 规格与实施证据
 ```

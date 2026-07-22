@@ -8,7 +8,7 @@ int main(int argc, char *argv[])
 {
     QApplication application(argc, argv);
     QCoreApplication::setApplicationName(QStringLiteral("Ninja Log Analyzer"));
-    QCoreApplication::setApplicationVersion(QStringLiteral("0.1.0"));
+    QCoreApplication::setApplicationVersion(QStringLiteral(NINJA_ANALYZER_VERSION));
     QCoreApplication::setOrganizationName(QStringLiteral("Codex"));
 
     MainWindow window;
