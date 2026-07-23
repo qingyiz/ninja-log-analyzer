@@ -36,7 +36,7 @@ Qt 5 只需把 `CMAKE_PREFIX_PATH` 指向 Qt 5 Kit。也可以把 Qt 的 `bin` �
 macOS 开发应用位于：
 
 ```text
-build/bin/Ninja Log Analyzer.app
+build/Ninja Log Analyzer.app
 ```
 
 Linux/Windows 的可执行文件在所选构建目录中。源码避免平台专有 UI API；本次交付实际验证的平台是 macOS arm64，Qt 6.4.3 和 Qt 5.15.2。
@@ -60,7 +60,7 @@ cmake --install build --prefix "$PWD/build/stage"
 正常启动后粘贴日志/目录路径，也可以点击“选择日志”或“选择目录”。命令行传入路径会在窗口显示后自动加载：
 
 ```bash
-"build/bin/Ninja Log Analyzer.app/Contents/MacOS/Ninja Log Analyzer" \
+"build/Ninja Log Analyzer.app/Contents/MacOS/Ninja Log Analyzer" \
   examples/demo-build
 ```
 

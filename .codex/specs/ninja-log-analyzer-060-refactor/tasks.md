@@ -2,7 +2,7 @@
 
 > 阶段：tasks
 >
-> 状态：待校验
+> 状态：已执行完成
 >
 > 最近更新：2026-07-23
 
@@ -22,6 +22,7 @@
 | 3 | TASK-003 | CMake target/目录依赖与架构一致，GUI 源码只编译一次 |
 | 4 | TASK-004 | build/install/deploy bundle 契约和文档可执行 |
 | 5 | TASK-005 | 双 Qt、结构、Spec 和原生交付证据闭环 |
+| 6 | TASK-006 | macOS bundle 改为 build 根级唯一产物并重新闭环 |
 
 ## 任务列表
 
@@ -66,7 +67,7 @@
   - 平台/交付物：所有平台的 build graph；本任务不收集运行时、不产生部署产物。
   - 依赖：TASK-001、TASK-002。
   - 修改范围：根 `CMakeLists.txt`、`src/*/CMakeLists.txt`、`tests/CMakeLists.txt`、兼容 module；不改业务行为。
-  - 产出：顶层 <=45 行；core/application/gui/app/tests 就近声明；AGL guard 在单责 module；输出根为 `<build>/bin`。
+  - 产出：顶层 <=45 行；core/application/gui/app/tests 就近声明；AGL guard 在单责 module；Windows/Linux 输出根为 `<build>/bin`，macOS 根级 bundle 路径由 TASK-006 的修正规则负责。
   - 验证：Qt6/Qt5 分别 configure；独立 build 四个生产 targets 和 test targets；CTest；`inspect_structure.py` 不再报顶层多职责。
   - 实施记录：根 CMake 降为 32 行编排；新增 core/application/gui/app/tests 就近清单和 Qt compatibility module；composition 移至 `src/app`；GUI test 仅链接生产 `ninja_analyzer_gui`。Qt5/Qt6 七个 targets 独立构建、三项 CTest 通过，inspect 不再报告顶层多职责，覆盖 PROP-004。
 
@@ -78,7 +79,7 @@
   - 模块/构建单元：`ninja_log_analyzer` + `cmake/NinjaAnalyzerDelivery.cmake`。
   - 架构约束：遵守 BUILD-003；部署/安装细节不得进入 core/application/gui 清单；使用 active Qt Kit 的工具。
   - 依赖变化：无生产源码 include/link 变化；install 阶段新增对 active `macdeployqt` 可执行文件的工具依赖。
-  - 平台/交付物：macOS arm64 开发 `<build>/bin/Ninja Log Analyzer.app`；部署 `<stage>/Ninja Log Analyzer.app`；Windows/Linux 仅通用 runtime install 契约且未验证。
+  - 平台/交付物：历史实施的 macOS arm64 开发路径为 `<build>/bin/Ninja Log Analyzer.app`，该路径经用户反馈被 TASK-006 废弃；部署 `<stage>/Ninja Log Analyzer.app` 仍有效；Windows/Linux 仅通用 runtime install 契约且未验证。
   - 依赖：TASK-003。
   - 修改范围：delivery CMake module、app bundle plist/template、`README.md`；不增加 DMG、签名、公证。
   - 产出：0.2.0 bundle 元数据、macOS 11.0 target、install-time Qt runtime 收集、精确使用/验证文档。
@@ -100,6 +101,21 @@
   - 验证：全新 Qt6/Qt5 build+CTest；Release 10 万测试；inspect/validate/status；`verify_delivery.py`；git diff/status 审计。
   - 实施记录：Qt6 Release CTest 3/3（最终 1.24s）、Qt5 Release CTest 3/3（最终 0.87s）；Qt6 两个 10 万记录专项共 232ms；Qt6 严格 `-Wall -Wextra -Wpedantic` 构建与 CTest 通过且无项目警告。target graph 证实 app→gui→application→core、gui→core PRIVATE、tests→被测层，无环且 GUI 源码不重复编译。最终 inspect 显示 MainWindow 359 行、顶层 CMake 38 行且不再触发两项生产复杂度问题；旧 `tst_core.cpp` 521 行提示不违反生产文件预算。Qt6/Qt5 部署 bundle 自包含检查与 cocoa 启动通过；Windows/Linux 明确未验证。`git diff --check`、0.6.0 validate 和 AGENTS sync 通过。
 
+- [x] TASK-006：修正 macOS 开发 bundle 的 build 根级路径
+  - 类型：required
+  - 需求：REQ-004；NFR-002、NFR-004
+  - 设计：DEC-003 / BUILD-003 / macOS 应用束约束 / PROP-005、PROP-006
+  - 单一变更原因：消除 `build/bin` 与用户要求的 build 根目录之间的精确路径偏差，并防止旧路径再次出现。
+  - 模块/构建单元：`ninja_log_analyzer` + `NinjaAnalyzerDelivery`。
+  - 架构约束：遵守 BUILD-003；只改 app/delivery/test 契约，不向顶层 CMake 或业务模块加入平台细节。
+  - 依赖变化：无生产 include/link 变化；新增 build-tree bundle 路径验证脚本和 CTest。
+  - 平台/交付物：macOS arm64 开发 `<build>/Ninja Log Analyzer.app`；部署 `<stage>/Ninja Log Analyzer.app`；Windows/Linux 继续 `<build>/bin` 且本机未验证。
+  - 依赖：TASK-005
+  - 修改范围：`src/app/CMakeLists.txt`、`cmake/NinjaAnalyzerDelivery.cmake`、新增精确路径检查脚本、`tests/CMakeLists.txt`、`README.md` 和本 Spec；不改业务源码、GUI、core/application 依赖。
+  - 产出：macOS 单/多配置输出属性指向 build 根；构建后自动验证 bundle 结构和路径唯一性；README 命令与实际一致。
+  - 验证：先清理旧 build target 产物，再在 `build` 目录重新配置/构建；断言根级 `.app` 存在且 `build/bin` 无同名 bundle；CTest；`verify_delivery.py`；install 自包含检查；cocoa 启动；Qt5/Qt6 回归；Spec validate/complete。
+  - 实施记录：确认原实现实际生成 `build/bin/Ninja Log Analyzer.app` 后，按用户明确要求把 macOS 单/多配置 `RUNTIME_OUTPUT_DIRECTORY` 改为 build 根，Windows/Linux 继续使用 `bin`。新增 post-build 与 CTest 共用的 `NinjaAnalyzerVerifyMacBundle.cmake`，同时断言根级 bundle 的 Info.plist/主程序和旧 `bin` bundle 不存在；守卫首次运行成功发现旧残留并阻止假通过，随后只删除该可重建旧 bundle。实际 `build` 目录现仅有 `build/Ninja Log Analyzer.app`，Qt5 Debug CTest 4/4（1.65s）。全新 Qt6 Release CTest 4/4（1.86s）、Qt5 Release CTest 4/4（1.16s）；两套 build bundle 通过 `verify_delivery.py`，两套 install bundle 通过 `--require-self-contained`，包含 cocoa plugin 与正确 LC_RPATH；Qt5/Qt6 部署应用均通过加载 demo 的 cocoa 启动 smoke。覆盖 AC-004.1、PROP-005/006。
+
 ## 覆盖检查
 
 | 行为 | 实现任务 | 验证任务/证据 | 状态 |
@@ -107,12 +123,12 @@
 | REQ-001 | TASK-001 | application/core tests、demo 19/2/14 基线 | 已验证 |
 | REQ-002 | TASK-002 | Qt5/Qt6 offscreen GUI tests、双 Kit 启动 | 已验证 |
 | REQ-003 | TASK-003 | target graph、独立 targets、inspect、严格警告 build | 已验证 |
-| REQ-004 | TASK-004 | 双 Qt build/install、verify_delivery、自包含和 cocoa smoke | 已验证（macOS arm64） |
+| REQ-004 | TASK-004、TASK-006 | 根级 build bundle、双 Qt build/install、verify_delivery、自包含和 cocoa smoke | 已验证（macOS arm64） |
 
 ## 完成门槛
 
 - [x] 所有 required 任务完成。
-- [x] REQ-001—004 与 PROP-001—005 均有验证证据。
+- [x] REQ-001—004 与 PROP-001—006 均有验证证据。
 - [x] Qt6/Qt5 全新构建与全部 CTest 通过，性能门槛保持。
 - [x] macOS 开发/部署 bundle 的路径、结构、依赖、架构和启动均有原生证据。
 - [x] 0.6.0 inspect/validate、架构依赖与代码—规格一致性审计通过。

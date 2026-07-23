@@ -24,3 +24,13 @@ add_test(NAME ninja_analyzer_gui_tests COMMAND ninja_analyzer_gui_tests)
 set_tests_properties(ninja_analyzer_gui_tests PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
+
+if(APPLE)
+    add_test(NAME ninja_analyzer_macos_bundle_layout
+        COMMAND "${CMAKE_COMMAND}"
+            "-DAPP_BUNDLE=$<TARGET_BUNDLE_DIR:ninja_log_analyzer>"
+            "-DEXPECTED_BUNDLE=${CMAKE_BINARY_DIR}/Ninja Log Analyzer.app"
+            "-DLEGACY_BUNDLE=${CMAKE_BINARY_DIR}/bin/Ninja Log Analyzer.app"
+            -P "${PROJECT_SOURCE_DIR}/cmake/NinjaAnalyzerVerifyMacBundle.cmake"
+    )
+endif()

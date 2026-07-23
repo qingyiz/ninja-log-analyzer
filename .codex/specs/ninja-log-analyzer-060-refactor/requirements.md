@@ -4,7 +4,7 @@
 >
 > 工作流：design-first
 >
-> 状态：设计输入草案
+> 状态：已完成
 >
 > 最近更新：2026-07-23
 
@@ -19,6 +19,7 @@
 | FACT-005 | 本机为 macOS 15.7.5 arm64，Qt 6.4.3/5.15.2、CMake 3.27.1、Ninja 1.11.1 | 已验证 | 只读版本探测、build caches | 本机原生验证两套 Qt 的 macOS app |
 | FACT-006 | 现有 build `.app` 未收集 Qt runtime，旧 CMake 只有 `install(TARGETS)` | 已验证 | `otool -L`、bundle 结构、CMakeLists | 新增部署产物契约与自包含验证 |
 | FACT-007 | Windows/Linux 当前没有原生 runner 或产物证据 | 未知 | 仓库无 CI，当前 host 为 macOS | 仅保持源码兼容，不宣称验证 |
+| FACT-008 | 当前 macOS bundle 位于 `build/bin/Ninja Log Analyzer.app`，但用户要求直接位于 build 根目录 | 用户明确/已验证 | 2026-07-23 用户反馈；`find build -name '*.app'`；`RUNTIME_OUTPUT_DIRECTORY=${CMAKE_BINARY_DIR}/bin` | 必须修正开发 bundle 精确路径并增加防回归检查 |
 
 ### 技术与运行环境调查
 
@@ -39,7 +40,7 @@
 - 所有旧 core 与 GUI 自动化测试继续通过，demo 分析指标和交互保持。
 - `MainWindow` 不再直接 include/call parser、manifest、analyzer；每个结果页独立拥有视图。
 - 顶层 CMake 只负责编排，GUI 源码不在 app/test 中重复列出。
-- Qt6 与 Qt5 分别完成干净配置、build、CTest；macOS build bundle 与部署 bundle 路径/结构被验证，Qt6 部署 bundle 通过自包含检查。
+- Qt6 与 Qt5 分别完成干净配置、build、CTest；macOS build bundle 必须直接位于 `<build>/Ninja Log Analyzer.app`，部署 bundle 路径/结构被验证，Qt6 部署 bundle通过自包含检查。
 - 0.6.0 `inspect_structure.py`、`validate_spec.py` 和 Spec complete 全部通过。
 
 ### 非目标
@@ -138,7 +139,7 @@
 
 #### 验收标准
 
-- AC-004.1：构建后系统应当在 `<build>/bin/Ninja Log Analyzer.app` 生成含 Info.plist 和主可执行文件的 arm64 bundle。
+- AC-004.1：在 macOS 上构建后，系统应当直接在 `<build>/Ninja Log Analyzer.app` 生成含 Info.plist 和主可执行文件的 arm64 bundle；`<build>/bin` 不得包含同名 `.app`。
 - AC-004.2：bundle Info.plist 应当包含标识、显示名、0.2.0 版本、可执行名和最低 macOS 11.0。
 - AC-004.3：install 后系统应当在 `<stage>/Ninja Log Analyzer.app` 生成包含 Qt frameworks 与 cocoa platform plugin 的部署 bundle。
 - AC-004.4：部署 bundle 的非系统依赖不得解析到开发机 Qt 绝对路径，并应当能直接启动加载 demo。
@@ -190,6 +191,7 @@
 | ANA-002 | 缺口 | REQ-004 | 用户未指定安装包/签名 | 只交付自包含 `.app`，不猜测 DMG/公证 |
 | ANA-003 | 约束 | REQ-004 | 最低 macOS 未明示 | 采用已验证两套 Qt framework 的共同下界 11.0，避免旧 app 偶然锁到当前 15.7 |
 | ANA-004 | 缺口 | REQ-004 | Windows/Linux 无 runner | 保持源码设计，明确未验证，不阻塞 macOS required |
+| ANA-005 | 规格漂移 | REQ-004 | 原 AC-004.1 接受 `build/bin`，但用户明确要求 build 根目录，导致“bundle 已生成”与用户检查路径不一致 | 保留 AC ID，修正为 build 根级唯一 bundle；Windows/Linux 的 bin 约定不变；新增 PROP-006 和 TASK-006 |
 
 ## 需求追踪
 
