@@ -10,6 +10,7 @@
 #include <QLineEdit>
 #include <QTableView>
 #include <QTableWidget>
+#include <QTabBar>
 #include <QTabWidget>
 #include <QTemporaryDir>
 #include <QtTest>
@@ -30,6 +31,7 @@ class MainWindowTests final : public QObject {
 private slots:
     void loadsSwitchesBatchAndPreservesStateAfterFailure();
     void timelineLayoutUsesNonOverlappingLanesAndLimit();
+    void usesProjectControlChrome();
     void renderConfiguredDemo();
 };
 
@@ -178,6 +180,27 @@ void MainWindowTests::timelineLayoutUsesNonOverlappingLanesAndLimit()
     QCOMPARE(limited.items.size(), TimelineWidget::MaximumRenderedRecords);
     QCOMPARE(limited.totalInputCount, TimelineWidget::MaximumRenderedRecords + 2);
     QVERIFY(limited.truncated);
+}
+
+void MainWindowTests::usesProjectControlChrome()
+{
+    MainWindow window;
+    auto *batchCombo = window.findChild<QComboBox *>(QStringLiteral("batchCombo"));
+    auto *categoryFilter = window.findChild<QComboBox *>(QStringLiteral("categoryFilter"));
+    auto *tabs = window.findChild<QTabWidget *>(QStringLiteral("resultTabs"));
+    QVERIFY(batchCombo);
+    QVERIFY(categoryFilter);
+    QVERIFY(tabs);
+    QCOMPARE(tabs->tabBar()->objectName(), QStringLiteral("resultTabBar"));
+    QVERIFY(QFile::exists(QStringLiteral(":/ninja-analyzer/ui/chevron-down.svg")));
+
+    const QString style = window.styleSheet();
+    QVERIFY(style.contains(QStringLiteral("QComboBox::drop-down")));
+    QVERIFY(style.contains(QStringLiteral("QComboBox::down-arrow")));
+    QVERIFY(style.contains(QStringLiteral("QTabBar#resultTabBar::tab:selected")));
+
+    tabs->setCurrentIndex(2);
+    QCOMPARE(tabs->currentIndex(), 2);
 }
 
 void MainWindowTests::renderConfiguredDemo()

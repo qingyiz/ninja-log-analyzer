@@ -10,6 +10,8 @@ AnalysisResultsWidget::AnalysisResultsWidget(QWidget *parent)
     : QTabWidget(parent)
 {
     setObjectName(QStringLiteral("resultTabs"));
+    tabBar()->setObjectName(QStringLiteral("resultTabBar"));
+    tabBar()->setDrawBase(false);
     tabBar()->setExpanding(false);
     tabBar()->setUsesScrollButtons(false);
     overview_ = new OverviewPage(this);

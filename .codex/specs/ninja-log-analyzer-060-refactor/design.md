@@ -8,7 +8,7 @@
 >
 > 状态：已完成
 >
-> 最近更新：2026-07-23
+> 最近更新：2026-07-24
 
 ## 设计摘要
 
@@ -32,6 +32,7 @@
 | 交付路径回归 | `find build -maxdepth 5 -name '*.app'`、`src/app/CMakeLists.txt`、2026-07-23 用户反馈 | 当前 bundle 实际位于 `build/bin/Ninja Log Analyzer.app`；用户明确要求它直接位于 build 根目录 | 修正 macOS build-tree 精确路径并增加自动回归，不能只验证“某处存在 .app” |
 | 最新交付反馈 | 2026-07-23 用户明确指出 `build/bin` 不是完整 mac 包 | 精确路径应为 `build/bin`，且 `.app` 必须包含运行所需 Qt Frameworks/plugins | TASK-006 的根级路径契约被替代；部署动作前移到 build target |
 | 图标交付缺口 | 资源搜索、Info.plist、app CMake、2026-07-23 用户反馈 | 仓库无 `.icns`，Info.plist 无图标键，app target 无 bundle 资源 | 图标由 app 构建单元所有，并纳入 build/install bundle 验证 |
+| 控件视觉回归 | 2026-07-24 用户截图、`AppStyle.cpp`、`AnalysisResultsWidget.cpp` | `QComboBox` 仅有外框规则，未覆盖 drop-down/down-arrow/view；通用 `QTabBar::tab` 只设置文本与底边，平台原生绘制产生黑色分隔线和灰色直角块 | presentation 模块补齐子控件样式，并用专用对象名限制结果标签规则 |
 
 ### 工具链与兼容性基线
 
@@ -81,6 +82,14 @@
 - 代价：首次及重新链接 app 的构建时间和磁盘占用增加；签名仍需外部凭据。
 - 被否决方案：把 bundle 内裸可执行文件当作交付物；无证据新增 DMG。
 
+### DEC-004：以 presentation 自有资源完成跨平台控件绘制
+
+- 上下文与需求：REQ-002 / AC-002.5。
+- 决策：保留标准 `QComboBox` 和 `QTabWidget` 的行为与可访问性；在 `AppStyle` 中完整覆盖组合框 drop-down、down-arrow、popup item 与结果标签栏状态，使用 GUI target 自有的轻量 SVG chevron，结果标签规则只作用于 `QTabBar#resultTabBar`。
+- 理由：最小改动即可消除平台原生样式残片，同时不改变筛选和页面切换信号。
+- 代价：GUI 静态库需显式初始化一项 Qt resource；视觉快照仍需人工确认整体观感。
+- 被否决方案：为两个组合框创建自绘子类；全局替换应用 `QStyle`；继续依赖平台原生箭头。
+
 ## 总体架构
 
 ```mermaid
@@ -102,7 +111,8 @@ flowchart LR
 | `OverviewPage` | 摘要、分类、洞察、下钻意图 | `AnalysisResult` → signals | REQ-002 |
 | `SlowTasksPage` | 虚拟表和过滤状态文案 | filtered records | REQ-002 |
 | `TimelinePage` | 时间线容器、截断/泳道状态文案 | filtered records | REQ-002 |
-| `AnalysisResultsWidget` | 三页面 tab 组合和页面间导航 | analysis + filtered records | REQ-002、REQ-003 |
+| `AnalysisResultsWidget` | 三页面 tab 组合、专用分段标签样式入口和页面间导航 | analysis + filtered records | REQ-002、REQ-003 |
+| `AppStyle` | presentation 视觉令牌、标准控件子控件样式和 UI resource 初始化 | Qt Style Sheet + `:/ninja-analyzer/ui/*` | REQ-002 |
 
 ## 模块与依赖边界
 
@@ -118,7 +128,7 @@ flowchart LR
 - 决策：Overview、SlowTasks、Timeline 各自构造、更新和拥有其子控件，窗口壳只协调过滤与导航。
 - 组合根：`AnalysisResultsWidget`。
 - 禁止的跨层依赖：页面之间不得保存彼此指针；通过 signals 或 results widget 的窄接口通信。
-- 边界验证方法：每页头文件仅暴露数据输入/查询和导航信号；GUI 测试按对象名验证行为。
+- 边界验证方法：每页头文件仅暴露数据输入/查询和导航信号；GUI 测试按对象名验证行为；结果标签栏用专用对象名限定样式作用域。
 
 ### ARCH-003：加载结果是原子值对象
 
@@ -146,7 +156,7 @@ flowchart LR
 
 ### BUILD-002：PUBLIC/PRIVATE 传递与 ARCH 依赖一致
 
-- core PUBLIC Qt Core；application PUBLIC core/Qt Core；gui PUBLIC application、PRIVATE Qt Widgets；app PRIVATE gui/Qt Widgets。
+- core PUBLIC Qt Core；application PUBLIC core/Qt Core；gui PUBLIC application、PRIVATE Qt Widgets，并就近编译 presentation 自有 `.qrc`；app PRIVATE gui/Qt Widgets。
 - GUI tests 链接 `ninja_analyzer_gui`，不再重复编译 GUI 源码；core/application tests 分别链接对应 target。
 
 ### BUILD-003：平台交付规则不进入模块编译清单
@@ -306,12 +316,18 @@ sequenceDiagram
 - 属性：任意通过交付验证的 macOS build/install bundle，其 `CFBundleIconFile` 必须解析到 `Contents/Resources/NinjaLogAnalyzer.icns`；该文件可由 `iconutil` 展开，并包含 16、32、128、256、512、1024 像素表示。
 - 验证：post-build/CTest 检查 plist 与资源存在；`iconutil --convert iconset` 检查标准层级；Finder Quick Look/图标预览作人工补充。
 
+### PROP-008：筛选与结果导航不混入平台原生样式残片
+
+- 来源：REQ-002 / AC-002.5。
+- 属性：Qt5/Qt6 中的批次和类型组合框均引用同一可加载的自有 chevron 资源并完整覆盖 drop-down；结果 tab bar 使用 `resultTabBar` 专用圆角分段规则，切换 tab 后仅选中项使用紫色强调，原有索引和计数文本保持。
+- 验证：GUI 自动化检查资源、对象名、样式规则和切换行为；Qt5/Qt6 demo 视觉快照人工复核。
+
 ## 测试策略
 
 | 行为/属性 | 测试层级 | 关键场景 | 证据形式 |
 |---|---|---|---|
 | REQ-001 / PROP-001 | application + core | 单日志、manifest、错误日志、批次 | QtTest/CTest |
-| REQ-002 / PROP-002/003 | GUI component | 成功、批次、过滤、失败保持、页面下钻 | offscreen QtTest |
+| REQ-002 / PROP-002/003/008 | GUI component | 成功、批次、过滤、失败保持、页面下钻、控件视觉契约 | offscreen QtTest + 双 Qt 视觉快照 |
 | REQ-003 / PROP-004 | build/静态审查 | target 独立 build、include/link 方向、结构预算 | CMake build + inspect script |
 | REQ-004 / PROP-005/006/007 | 原生交付 | Qt6/Qt5 build app、`bin` 精确路径、图标、build/install 自包含、启动 | CMake/CTest/verify_delivery/plist/iconutil/file/启动 smoke |
 
@@ -320,7 +336,7 @@ sequenceDiagram
 | 行为 | 组件/接口 | 架构/构建边界 | 决策 | 正确性属性 | 测试策略 |
 |---|---|---|---|---|---|
 | REQ-001 | AnalysisService | ARCH-001/003、BUILD-001/002 | DEC-001 | PROP-001 | application/core |
-| REQ-002 | MainWindow、Results pages | ARCH-002/003、BUILD-002 | DEC-001 | PROP-002/003 | GUI |
+| REQ-002 | MainWindow、Results pages、AppStyle | ARCH-002/003、BUILD-002 | DEC-001/004 | PROP-002/003/008 | GUI |
 | REQ-003 | 所有 modules/targets | ARCH-001/002、BUILD-001/002 | DEC-002 | PROP-004 | build/structure |
 | REQ-004 | app + delivery module | ARCH-001、BUILD-003 | DEC-003 | PROP-005/006/007 | native delivery |
 
@@ -330,4 +346,5 @@ sequenceDiagram
 - RISK-002：Linux/Windows 无本轮原生 runner；只标记源码设计契约，不能标记交付已验证。
 - RISK-003：拆分页面可能改变 object ownership 或信号时序；保留 objectName 并由 GUI 回归覆盖。
 - RISK-004：只检查递归找到任意 `.app` 会掩盖输出目录漂移；回归必须断言 `build/bin` 精确路径和 build 根目录中不存在重复 bundle。
+- RISK-005：Qt5/Qt6 与平台 style 对 QSS 子控件绘制细节不同；用自有 SVG 箭头、对象名限定规则和双 Kit 快照降低漂移。
 - 当前无阻塞设计或实施的未决问题。
