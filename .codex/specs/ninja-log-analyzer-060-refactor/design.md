@@ -27,9 +27,10 @@
 | 核心边界 | `src/core/*`、`tests/tst_core.cpp` | 解析和统计已在 `ninja_analyzer_core` 中且只依赖 Qt Core，核心测试 521 行 | 保持核心算法和 target 边界，不盲目重写 |
 | UI 边界 | `src/gui/MainWindow.*` | `MainWindow` 同时执行文件定位、解析编排、页面构造、结果渲染、过滤和样式 | 增加 application service；结果页与样式独立 |
 | 构建边界 | `CMakeLists.txt` | GUI 源码在应用与 GUI 测试中重复编译；所有 target 都由顶层声明 | 建 `ninja_analyzer_application`、`ninja_analyzer_gui` 库并下沉清单 |
-| 当前开发产物 | `file`、`plutil`、`otool` 检查 `build/Ninja Log Analyzer.app` | arm64 `.app` 可执行，身份/版本存在，但未收集 Qt frameworks/plugins；未声明最低系统版本 | build-tree `.app` 与自包含部署 `.app` 分开验证 |
+| 当前开发产物 | `file`、`plutil`、`otool` 检查 `build/Ninja Log Analyzer.app` | arm64 `.app` 只有外壳，未收集 Qt frameworks/plugins，LC_RPATH 仍指向开发机 Qt | 默认 build 必须在 `bin` 中完成 Qt runtime 部署 |
 | 原规格 | `.codex/specs/ninja-log-analyzer/*` 与 0.6.0 `validate_spec.py` | 功能规格已完成，但缺 0.6.0 的 ARCH/BUILD/复杂度/任务字段 | 新建重构 Spec，保留旧 Spec 作为原功能证据 |
 | 交付路径回归 | `find build -maxdepth 5 -name '*.app'`、`src/app/CMakeLists.txt`、2026-07-23 用户反馈 | 当前 bundle 实际位于 `build/bin/Ninja Log Analyzer.app`；用户明确要求它直接位于 build 根目录 | 修正 macOS build-tree 精确路径并增加自动回归，不能只验证“某处存在 .app” |
+| 最新交付反馈 | 2026-07-23 用户明确指出 `build/bin` 不是完整 mac 包 | 精确路径应为 `build/bin`，且 `.app` 必须包含运行所需 Qt Frameworks/plugins | TASK-006 的根级路径契约被替代；部署动作前移到 build target |
 
 ### 工具链与兼容性基线
 
@@ -71,12 +72,12 @@
 - 代价：增加多个小型 `CMakeLists.txt`。
 - 被否决方案：继续在顶层集中声明所有源文件和平台脚本。
 
-### DEC-003：区分开发 bundle、安装 bundle 与自包含部署 bundle
+### DEC-003：build-tree 直接生成自包含部署 bundle
 
 - 上下文与需求：REQ-004。
-- 决策：macOS 开发产物固定为 `<build>/Ninja Log Analyzer.app`；Windows/Linux 继续使用 `<build>/bin`；`cmake --install --prefix <stage>` 生成 `<stage>/Ninja Log Analyzer.app` 并用 active Qt Kit 的 `macdeployqt` 收集运行时；发布包、签名和公证本轮不适用。
-- 理由：编译成功不等于可分发；两套 Qt Kit 都提供经探测的部署工具。
-- 代价：macOS 与其他平台使用不同 build-tree 输出根；安装阶段耗时和体积增加；签名仍需外部凭据。
+- 决策：macOS 主交付物固定为 `<build>/bin/Ninja Log Analyzer.app`；app target 链接完成后立即使用 active Qt Kit 的 `macdeployqt` 收集运行时并验证。`cmake --install --prefix <stage>` 保留为完整 bundle 的安装副本；发布包、签名和公证本轮不适用。
+- 理由：用户明确从 `build/bin` 取包；编译成功不等于可分发，完整依赖不能只存在于另一个 stage 目录。
+- 代价：首次及重新链接 app 的构建时间和磁盘占用增加；签名仍需外部凭据。
 - 被否决方案：把 bundle 内裸可执行文件当作交付物；无证据新增 DMG。
 
 ## 总体架构
@@ -163,21 +164,21 @@ flowchart LR
 ## 平台与交付矩阵
 
 - 目标平台集合及证据：required 为 macOS arm64（当前原生环境和旧 Spec）；Windows/Linux 保持源码兼容但不是本轮已验证交付平台。
-- 开发输出根目录约定：macOS 为 `<build>`；Windows/Linux 为 `<build>/bin`。
+- 开发输出根目录约定：所有平台为 `<build>/bin`；macOS 该目录中的 `.app` 是完整部署 bundle。
 - 原生构建/验证环境：macOS 15.7.5 arm64；Qt 6.4.3 与 Qt 5.15.2。
 
 | 目标平台/架构 | 开发构建物及精确路径 | 安装/部署产物 | 最终发布包 | 运行时依赖与资源 | 原生验证命令/证据 |
 |---|---|---|---|---|---|
-| macOS 11.0+ / arm64 | `<build>/Ninja Log Analyzer.app` | `<stage>/Ninja Log Analyzer.app` | 不适用（本轮不签名/公证/DMG） | deploy bundle 含 Qt Frameworks、PlugIns/platforms、Info.plist | 在全新 `build` 目录检查根级 bundle；CTest；`cmake --install`、`verify_delivery.py`、启动 smoke |
+| macOS 11.0+ / arm64 | `<build>/bin/Ninja Log Analyzer.app`（自包含） | `<stage>/Ninja Log Analyzer.app` | 不适用（本轮不签名/公证/DMG） | build/install bundle 均含 Qt Frameworks、PlugIns/platforms、Info.plist | 全新 build；CTest；两处 `verify_delivery.py --require-self-contained`；build bundle 启动 smoke |
 | Windows / 未确认 | `<build>/bin/Ninja Log Analyzer.exe`（设计契约） | `<prefix>/bin/...exe`（未验证） | 不适用 | DLL/plugins 未验证 | 本轮无原生 runner，明确未验证 |
 | Linux / 未确认 | `<build>/bin/ninja_log_analyzer`（设计契约） | `<prefix>/bin/...`（未验证） | 不适用 | so/plugins 未验证 | 本轮无原生 runner，明确未验证 |
 
 ### macOS 应用束约束
 
-- `.app` 根路径：开发 `<build>/Ninja Log Analyzer.app`；部署 `<stage>/Ninja Log Analyzer.app`。`<build>/bin` 中不得再出现第二份 macOS bundle。
+- `.app` 根路径：主交付 `<build>/bin/Ninja Log Analyzer.app`；安装副本 `<stage>/Ninja Log Analyzer.app`。`<build>` 根目录不得存在第二份 macOS bundle。
 - `Contents/Info.plist`：`CFBundleIdentifier=com.codex.ninjaloganalyzer`、显示名/可执行名、项目版本、`LSMinimumSystemVersion=11.0`。
 - `Contents/MacOS/<CFBundleExecutable>`：`Contents/MacOS/Ninja Log Analyzer`，Mach-O arm64。
-- Resources、Frameworks、PlugIns：无业务资源；部署 bundle 必须包含 Qt frameworks 与 cocoa platform plugin。
+- Resources、Frameworks、PlugIns：无业务资源；build/install bundle 都必须包含 Qt frameworks 与 cocoa platform plugin。
 - Qt/框架部署方式：使用 active Qt Kit 中已探测到的 `macdeployqt`，不能混用 Qt5/Qt6 工具。
 - 签名、公证、架构和启动验证：adhoc/开发签名不作为发布签名；不公证；`file` 验 arm64；直接启动可执行并加载 demo 后受控退出作为 smoke。
 
@@ -292,11 +293,11 @@ sequenceDiagram
 - 属性：部署 `.app` 具备合法 bundle 结构、arm64 主程序、Qt frameworks 和 cocoa plugin，非系统动态依赖不解析到开发机 Qt 绝对路径。
 - 验证：`verify_delivery.py --require-self-contained`、`otool`、启动 smoke。
 
-### PROP-006：macOS 开发 bundle 路径唯一且确定
+### PROP-006：macOS build bundle 路径唯一且自包含
 
 - 来源：REQ-004 / AC-004.1。
-- 属性：对于任意受支持的 macOS 单配置构建目录，构建 `ninja_log_analyzer` 后，bundle 必须直接位于 `<build>/Ninja Log Analyzer.app`，其 `Contents/Info.plist` 与 `Contents/MacOS/Ninja Log Analyzer` 存在，且 `<build>/bin` 不包含同名 `.app`。
-- 验证：仓库 CTest 精确路径检查 + 全新名为 `build` 的目录构建 + `verify_delivery.py`。
+- 属性：对于任意受支持的 macOS 单配置构建目录，构建 `ninja_log_analyzer` 后，bundle 必须位于 `<build>/bin/Ninja Log Analyzer.app`，根目录无同名副本，并包含 Frameworks、cocoa plugin 和 bundle Frameworks RPATH。
+- 验证：仓库 post-build/CTest 精确检查 + 全新 `build` 目录 + `verify_delivery.py --require-self-contained` + 启动 smoke。
 
 ## 测试策略
 
@@ -305,7 +306,7 @@ sequenceDiagram
 | REQ-001 / PROP-001 | application + core | 单日志、manifest、错误日志、批次 | QtTest/CTest |
 | REQ-002 / PROP-002/003 | GUI component | 成功、批次、过滤、失败保持、页面下钻 | offscreen QtTest |
 | REQ-003 / PROP-004 | build/静态审查 | target 独立 build、include/link 方向、结构预算 | CMake build + inspect script |
-| REQ-004 / PROP-005/006 | 原生交付 | Qt6/Qt5 build app、根级精确路径、install/deploy、bundle 结构与启动 | CMake/CTest/verify_delivery/file/启动 smoke |
+| REQ-004 / PROP-005/006 | 原生交付 | Qt6/Qt5 build app、`bin` 精确路径、build/install 自包含、启动 | CMake/CTest/verify_delivery/file/启动 smoke |
 
 ## 需求覆盖矩阵
 
@@ -321,5 +322,5 @@ sequenceDiagram
 - RISK-001：Qt5/Qt6 `macdeployqt` 输出细节不同；必须分别用当前 Kit 的工具验证，失败不降级为“编译通过”。
 - RISK-002：Linux/Windows 无本轮原生 runner；只标记源码设计契约，不能标记交付已验证。
 - RISK-003：拆分页面可能改变 object ownership 或信号时序；保留 objectName 并由 GUI 回归覆盖。
-- RISK-004：只检查递归找到任意 `.app` 会掩盖输出目录漂移；回归必须断言 build 根级精确路径和 `bin` 中不存在重复 bundle。
+- RISK-004：只检查递归找到任意 `.app` 会掩盖输出目录漂移；回归必须断言 `build/bin` 精确路径和 build 根目录中不存在重复 bundle。
 - 当前无阻塞设计或实施的未决问题。

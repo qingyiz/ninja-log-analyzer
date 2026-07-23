@@ -19,7 +19,9 @@
 | FACT-005 | 本机为 macOS 15.7.5 arm64，Qt 6.4.3/5.15.2、CMake 3.27.1、Ninja 1.11.1 | 已验证 | 只读版本探测、build caches | 本机原生验证两套 Qt 的 macOS app |
 | FACT-006 | 现有 build `.app` 未收集 Qt runtime，旧 CMake 只有 `install(TARGETS)` | 已验证 | `otool -L`、bundle 结构、CMakeLists | 新增部署产物契约与自包含验证 |
 | FACT-007 | Windows/Linux 当前没有原生 runner 或产物证据 | 未知 | 仓库无 CI，当前 host 为 macOS | 仅保持源码兼容，不宣称验证 |
-| FACT-008 | 当前 macOS bundle 位于 `build/bin/Ninja Log Analyzer.app`，但用户要求直接位于 build 根目录 | 用户明确/已验证 | 2026-07-23 用户反馈；`find build -name '*.app'`；`RUNTIME_OUTPUT_DIRECTORY=${CMAKE_BINARY_DIR}/bin` | 必须修正开发 bundle 精确路径并增加防回归检查 |
+| FACT-008 | 先前根据“build 目录”反馈把 macOS bundle 从 `build/bin` 改到了 build 根目录 | 已验证 | commit `9915cb3`、原 TASK-006 | 该解释与用户最新明确路径不一致 |
+| FACT-009 | 用户最新明确要求 `build/bin` 下是完整 macOS 包 | 用户明确 | 2026-07-23 用户反馈 | build-tree 主交付物必须固定为 `<build>/bin/Ninja Log Analyzer.app` 且自包含 |
+| FACT-010 | 当前 build-tree bundle 只有 Info.plist/主程序，缺 Qt Frameworks、cocoa plugin，且 LC_RPATH 指向开发机 Qt5 | 已验证 | `du`、`find`、`otool -L/-l`、0.6.0 `verify_delivery.py --require-self-contained` | 只改输出路径不够，默认 build 必须执行 Qt runtime 部署 |
 
 ### 技术与运行环境调查
 
@@ -40,7 +42,7 @@
 - 所有旧 core 与 GUI 自动化测试继续通过，demo 分析指标和交互保持。
 - `MainWindow` 不再直接 include/call parser、manifest、analyzer；每个结果页独立拥有视图。
 - 顶层 CMake 只负责编排，GUI 源码不在 app/test 中重复列出。
-- Qt6 与 Qt5 分别完成干净配置、build、CTest；macOS build bundle 必须直接位于 `<build>/Ninja Log Analyzer.app`，部署 bundle 路径/结构被验证，Qt6 部署 bundle通过自包含检查。
+- Qt6 与 Qt5 分别完成干净配置、build、CTest；macOS build bundle 必须位于 `<build>/bin/Ninja Log Analyzer.app`，且默认 build 后即通过自包含检查。
 - 0.6.0 `inspect_structure.py`、`validate_spec.py` 和 Spec complete 全部通过。
 
 ### 非目标
@@ -65,8 +67,8 @@
 | 术语 | 精确定义 |
 |---|---|
 | 保持行为 | 旧 Spec REQ-001—006 的用户可观察输入、输出、错误恢复和统计口径 |
-| 开发 bundle | CMake build tree 中用于开发测试、可依赖 active Qt Kit 的 `.app` |
-| 部署 bundle | install tree 中已收集 Qt frameworks/plugins、可做自包含检查的 `.app` |
+| 开发/部署 bundle | CMake build tree 的 `bin` 中已收集 Qt frameworks/plugins、可直接启动并通过自包含检查的 `.app` |
+| 安装副本 | install tree 中从完整 build bundle 安装并再次核验部署依赖的 `.app` |
 | 发布包 | DMG/PKG/签名公证产物；本轮不适用 |
 
 ### 系统边界与依赖
@@ -81,7 +83,7 @@
 2. 成功后仍查看默认最后批次的概览、慢任务和时间线，并可切换批次/过滤。
 3. 失败或取消仍保留最近成功结果。
 4. 维护者可以分别构建 core/application/gui/app/test targets。
-5. macOS 维护者 install 到 stage 后获得已收集 Qt runtime 的 `.app` 并执行自包含验证。
+5. macOS 维护者完成默认 build 后，直接在 `build/bin` 获得已收集 Qt runtime 的 `.app`；需要独立前缀时再 install 到 stage。
 
 ## 功能需求
 
@@ -135,14 +137,14 @@
 
 - 优先级：Must
 - 前置条件：macOS arm64、active Qt Kit 提供 `macdeployqt`。
-- 结果/副作用：build/install tree 产生不同层级 bundle；不签名公证。
+- 结果/副作用：build tree 直接产生完整 bundle，install tree 可产生副本；不签名公证。
 
 #### 验收标准
 
-- AC-004.1：在 macOS 上构建后，系统应当直接在 `<build>/Ninja Log Analyzer.app` 生成含 Info.plist 和主可执行文件的 arm64 bundle；`<build>/bin` 不得包含同名 `.app`。
+- AC-004.1：在 macOS 上执行默认构建后，系统应当在 `<build>/bin/Ninja Log Analyzer.app` 生成 arm64 bundle；`<build>` 根目录不得存在第二份同名 `.app`。
 - AC-004.2：bundle Info.plist 应当包含标识、显示名、0.2.0 版本、可执行名和最低 macOS 11.0。
-- AC-004.3：install 后系统应当在 `<stage>/Ninja Log Analyzer.app` 生成包含 Qt frameworks 与 cocoa platform plugin 的部署 bundle。
-- AC-004.4：部署 bundle 的非系统依赖不得解析到开发机 Qt 绝对路径，并应当能直接启动加载 demo。
+- AC-004.3：`<build>/bin` bundle 应当包含 Qt frameworks 与 cocoa platform plugin；install 后 `<stage>/Ninja Log Analyzer.app` 应保持同一完整性。
+- AC-004.4：`<build>/bin` bundle 的非系统依赖不得解析到开发机 Qt 绝对路径，并应当能直接启动加载 demo。
 - AC-004.5：如果是 Windows/Linux 配置，系统应当保持可执行 target 和通用 install 规则，但只有原生 runner 验证后才能标记该平台已交付。
 
 ## 非功能需求
@@ -162,7 +164,7 @@
 | 多日志候选取消 | 旧状态不变 | REQ-002 |
 | parser 失败 | service 返回 error，无半成品提交 | REQ-001、REQ-002 |
 | 过滤结果为空 | 两明细页均为空，摘要不变 | REQ-002 |
-| `macdeployqt` 缺失/失败 | install/deploy 命令失败并报告，不伪称自包含 | REQ-004 |
+| `macdeployqt` 缺失/失败 | build/install 命令失败并报告，不伪称自包含 | REQ-004 |
 | 非 macOS host | 不执行 macOS deployment；平台状态未验证 | REQ-004 |
 
 ## 约束、假设与风险
@@ -192,6 +194,7 @@
 | ANA-003 | 约束 | REQ-004 | 最低 macOS 未明示 | 采用已验证两套 Qt framework 的共同下界 11.0，避免旧 app 偶然锁到当前 15.7 |
 | ANA-004 | 缺口 | REQ-004 | Windows/Linux 无 runner | 保持源码设计，明确未验证，不阻塞 macOS required |
 | ANA-005 | 规格漂移 | REQ-004 | 原 AC-004.1 接受 `build/bin`，但用户明确要求 build 根目录，导致“bundle 已生成”与用户检查路径不一致 | 保留 AC ID，修正为 build 根级唯一 bundle；Windows/Linux 的 bin 约定不变；新增 PROP-006 和 TASK-006 |
+| ANA-006 | 规格漂移 | REQ-004 | 用户进一步明确检查的是 `build/bin`，且要求该处是“完整 mac 包”；此前只把完整依赖部署到 stage | 以最新明确要求为准：保留 AC ID，恢复 `build/bin` 精确路径，并把自包含检查前移到默认 build；新增 TASK-007 |
 
 ## 需求追踪
 

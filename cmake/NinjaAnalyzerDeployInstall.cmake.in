@@ -1,18 +1,27 @@
-set(ninja_analyzer_bundle "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/Ninja Log Analyzer.app")
+if(DEFINED NINJA_ANALYZER_BUILD_BUNDLE)
+    set(ninja_analyzer_bundle "${NINJA_ANALYZER_BUILD_BUNDLE}")
+    set(ninja_analyzer_deploy_required TRUE)
+else()
+    set(ninja_analyzer_bundle
+        "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/Ninja Log Analyzer.app")
+    set(ninja_analyzer_deploy_required FALSE)
+endif()
 if(NOT EXISTS "${ninja_analyzer_bundle}/Contents/MacOS/Ninja Log Analyzer")
-    message(FATAL_ERROR "Installed app bundle is incomplete: ${ninja_analyzer_bundle}")
+    message(FATAL_ERROR "App bundle is incomplete: ${ninja_analyzer_bundle}")
 endif()
 
-execute_process(
-    COMMAND "@NINJA_ANALYZER_MACDEPLOYQT@"
-            "${ninja_analyzer_bundle}"
-            -always-overwrite
-            -verbose=1
-    RESULT_VARIABLE ninja_analyzer_deploy_result
-)
-if(NOT ninja_analyzer_deploy_result EQUAL 0)
-    message(FATAL_ERROR
-        "macdeployqt failed for ${ninja_analyzer_bundle}: ${ninja_analyzer_deploy_result}")
+if(ninja_analyzer_deploy_required)
+    execute_process(
+        COMMAND "@NINJA_ANALYZER_MACDEPLOYQT@"
+                "${ninja_analyzer_bundle}"
+                -always-overwrite
+                -verbose=1
+        RESULT_VARIABLE ninja_analyzer_deploy_result
+    )
+    if(NOT ninja_analyzer_deploy_result EQUAL 0)
+        message(FATAL_ERROR
+            "macdeployqt failed for ${ninja_analyzer_bundle}: ${ninja_analyzer_deploy_result}")
+    endif()
 endif()
 
 set(ninja_analyzer_executable
@@ -25,7 +34,9 @@ execute_process(
 if(NOT ninja_analyzer_otool_result EQUAL 0)
     message(FATAL_ERROR "Cannot inspect deployed executable load commands")
 endif()
-if(NOT ninja_analyzer_load_commands MATCHES "@executable_path/../Frameworks")
+if(ninja_analyzer_deploy_required
+   AND NOT ninja_analyzer_load_commands MATCHES
+       "@executable_path/../Frameworks")
     execute_process(
         COMMAND install_name_tool -add_rpath
                 "@executable_path/../Frameworks"
@@ -35,4 +46,25 @@ if(NOT ninja_analyzer_load_commands MATCHES "@executable_path/../Frameworks")
     if(NOT ninja_analyzer_rpath_result EQUAL 0)
         message(FATAL_ERROR "Cannot add the deployed Frameworks rpath")
     endif()
+endif()
+
+if(NOT IS_DIRECTORY "${ninja_analyzer_bundle}/Contents/Frameworks")
+    message(FATAL_ERROR "Deployed app bundle is missing Qt frameworks")
+endif()
+if(NOT EXISTS
+   "${ninja_analyzer_bundle}/Contents/PlugIns/platforms/libqcocoa.dylib")
+    message(FATAL_ERROR
+        "Deployed app bundle is missing the cocoa platform plugin")
+endif()
+
+execute_process(
+    COMMAND otool -l "${ninja_analyzer_executable}"
+    OUTPUT_VARIABLE ninja_analyzer_final_load_commands
+    RESULT_VARIABLE ninja_analyzer_final_otool_result
+)
+if(NOT ninja_analyzer_final_otool_result EQUAL 0
+   OR NOT ninja_analyzer_final_load_commands MATCHES
+       "@executable_path/../Frameworks")
+    message(FATAL_ERROR
+        "Deployed app bundle is missing the Frameworks runtime search path")
 endif()
