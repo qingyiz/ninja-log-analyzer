@@ -23,6 +23,7 @@
 | 4 | TASK-004 | build/install/deploy bundle 契约和文档可执行 |
 | 5 | TASK-005 | 双 Qt、结构、Spec 和原生交付证据闭环 |
 | 6 | TASK-006 | macOS bundle 改为 build 根级唯一产物并重新闭环 |
+| 7 | TASK-007 | `build/bin` 直接生成自包含 macOS bundle 并重新闭环 |
 
 ## 任务列表
 
@@ -67,7 +68,7 @@
   - 平台/交付物：所有平台的 build graph；本任务不收集运行时、不产生部署产物。
   - 依赖：TASK-001、TASK-002。
   - 修改范围：根 `CMakeLists.txt`、`src/*/CMakeLists.txt`、`tests/CMakeLists.txt`、兼容 module；不改业务行为。
-  - 产出：顶层 <=45 行；core/application/gui/app/tests 就近声明；AGL guard 在单责 module；Windows/Linux 输出根为 `<build>/bin`，macOS 根级 bundle 路径由 TASK-006 的修正规则负责。
+  - 产出：顶层 <=45 行；core/application/gui/app/tests 就近声明；AGL guard 在单责 module；输出根为 `<build>/bin`，macOS 的最终自包含语义由 TASK-007 修正规则负责。
   - 验证：Qt6/Qt5 分别 configure；独立 build 四个生产 targets 和 test targets；CTest；`inspect_structure.py` 不再报顶层多职责。
   - 实施记录：根 CMake 降为 32 行编排；新增 core/application/gui/app/tests 就近清单和 Qt compatibility module；composition 移至 `src/app`；GUI test 仅链接生产 `ninja_analyzer_gui`。Qt5/Qt6 七个 targets 独立构建、三项 CTest 通过，inspect 不再报告顶层多职责，覆盖 PROP-004。
 
@@ -116,6 +117,21 @@
   - 验证：先清理旧 build target 产物，再在 `build` 目录重新配置/构建；断言根级 `.app` 存在且 `build/bin` 无同名 bundle；CTest；`verify_delivery.py`；install 自包含检查；cocoa 启动；Qt5/Qt6 回归；Spec validate/complete。
   - 实施记录：确认原实现实际生成 `build/bin/Ninja Log Analyzer.app` 后，按用户明确要求把 macOS 单/多配置 `RUNTIME_OUTPUT_DIRECTORY` 改为 build 根，Windows/Linux 继续使用 `bin`。新增 post-build 与 CTest 共用的 `NinjaAnalyzerVerifyMacBundle.cmake`，同时断言根级 bundle 的 Info.plist/主程序和旧 `bin` bundle 不存在；守卫首次运行成功发现旧残留并阻止假通过，随后只删除该可重建旧 bundle。实际 `build` 目录现仅有 `build/Ninja Log Analyzer.app`，Qt5 Debug CTest 4/4（1.65s）。全新 Qt6 Release CTest 4/4（1.86s）、Qt5 Release CTest 4/4（1.16s）；两套 build bundle 通过 `verify_delivery.py`，两套 install bundle 通过 `--require-self-contained`，包含 cocoa plugin 与正确 LC_RPATH；Qt5/Qt6 部署应用均通过加载 demo 的 cocoa 启动 smoke。覆盖 AC-004.1、PROP-005/006。
 
+- [x] TASK-007：让 `build/bin` 直接产生完整 macOS bundle
+  - 类型：required
+  - 需求：REQ-004；NFR-002、NFR-004
+  - 设计：DEC-003 / BUILD-003 / macOS 应用束约束 / PROP-005、PROP-006
+  - 单一变更原因：落实用户最新明确的 `build/bin` 路径，并消除 build bundle 缺 Qt runtime、只有 stage bundle 完整的偏差。
+  - 模块/构建单元：`ninja_log_analyzer` + `NinjaAnalyzerDelivery`。
+  - 架构约束：遵守 BUILD-003；部署/验证细节留在 `cmake` module，不进入业务源码或顶层编排。
+  - 依赖变化：无生产 include/link 变化；app target 的 POST_BUILD 增加 active Kit `macdeployqt` 和自包含结构检查。
+  - 平台/交付物：macOS arm64 `<build>/bin/Ninja Log Analyzer.app` 为主自包含交付物；`<stage>/Ninja Log Analyzer.app` 为安装副本。
+  - 依赖：TASK-006
+  - 修改范围：`src/app/CMakeLists.txt`、delivery/部署/验证 CMake 脚本、`tests/CMakeLists.txt`、`README.md` 与本 Spec；不改业务代码、GUI、core/application 依赖。
+  - 产出：默认 build 后 `bin` 中含 Frameworks、cocoa plugin、正确 RPATH 的唯一 `.app`；部署失败使 build 失败。
+  - 验证：Qt6/Qt5 全新 build+CTest；两套 build bundle 执行 `verify_delivery.py --require-self-contained`；build bundle 加载 demo 启动 smoke；install 副本复验；inspect/validate/git diff 审计。
+  - 实施记录：将 macOS 单/多配置 app 输出统一为 `<build>/bin/Ninja Log Analyzer.app`，并在 app 的 POST_BUILD 中使用当前 Qt Kit 的 `macdeployqt` 收集 Frameworks/plugins；部署失败或缺 Frameworks、cocoa plugin、bundle RPATH、精确路径不符时直接使 build 失败。app target 显式统一 build/install RPATH 为 `@executable_path/../Frameworks`，install 只复制并复验完整 bundle，消除 CMake 对已改写旧 RPATH 的二次删除错误。全新 Qt5 Release 和 Qt6 Release 均在 `bin` 生成唯一 bundle，CTest 各 4/4 通过（Qt5 1.41s；Qt6 最新复验 0.65s）；两套 build bundle 和两套最新 install 副本均通过 0.6.0 `verify_delivery.py --require-self-contained`，包含 Qt Frameworks、`libqcocoa.dylib`、正确 LC_RPATH、arm64 主程序和 macOS 11.0 元数据。Qt5/Qt6 build bundle 加载 demo 后均持续运行 3 秒并受控退出，cocoa 启动 smoke 通过。`inspect_structure.py` 确认顶层仍为 38 行纯编排，生产文件无新复杂度触发；`git diff --check` 通过。覆盖 AC-004.1—4、PROP-005/006。
+
 ## 覆盖检查
 
 | 行为 | 实现任务 | 验证任务/证据 | 状态 |
@@ -123,13 +139,13 @@
 | REQ-001 | TASK-001 | application/core tests、demo 19/2/14 基线 | 已验证 |
 | REQ-002 | TASK-002 | Qt5/Qt6 offscreen GUI tests、双 Kit 启动 | 已验证 |
 | REQ-003 | TASK-003 | target graph、独立 targets、inspect、严格警告 build | 已验证 |
-| REQ-004 | TASK-004、TASK-006 | 根级 build bundle、双 Qt build/install、verify_delivery、自包含和 cocoa smoke | 已验证（macOS arm64） |
+| REQ-004 | TASK-004、TASK-006、TASK-007 | `build/bin` 自包含 bundle、双 Qt build/install、verify_delivery 和 cocoa smoke | 已验证（macOS arm64） |
 
 ## 完成门槛
 
 - [x] 所有 required 任务完成。
-- [x] REQ-001—004 与 PROP-001—006 均有验证证据。
-- [x] Qt6/Qt5 全新构建与全部 CTest 通过，性能门槛保持。
-- [x] macOS 开发/部署 bundle 的路径、结构、依赖、架构和启动均有原生证据。
+- [x] REQ-001—004 与 PROP-001—006 均有最新验证证据。
+- [x] Qt6/Qt5 构建与全部 CTest 通过，性能门槛保持。
+- [x] macOS `build/bin` bundle 的路径、结构、依赖、架构和启动均有原生证据。
 - [x] 0.6.0 inspect/validate、架构依赖与代码—规格一致性审计通过。
 - [x] Windows/Linux 未验证状态、迁移/回滚、发布包不适用均明确记录。

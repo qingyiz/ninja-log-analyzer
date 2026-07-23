@@ -15,11 +15,7 @@ else()
     set(ninja_analyzer_output_name "ninja_log_analyzer")
 endif()
 
-if(APPLE)
-    set(ninja_analyzer_runtime_output_directory "${CMAKE_BINARY_DIR}")
-else()
-    set(ninja_analyzer_runtime_output_directory "${CMAKE_BINARY_DIR}/bin")
-endif()
+set(ninja_analyzer_runtime_output_directory "${CMAKE_BINARY_DIR}/bin")
 
 set_target_properties(ninja_log_analyzer PROPERTIES
     OUTPUT_NAME "${ninja_analyzer_output_name}"
@@ -33,7 +29,8 @@ set_target_properties(ninja_log_analyzer PROPERTIES
 if(APPLE)
     foreach(configuration DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
         set_target_properties(ninja_log_analyzer PROPERTIES
-            "RUNTIME_OUTPUT_DIRECTORY_${configuration}" "${CMAKE_BINARY_DIR}"
+            "RUNTIME_OUTPUT_DIRECTORY_${configuration}"
+            "${ninja_analyzer_runtime_output_directory}"
         )
     endforeach()
 
@@ -45,6 +42,8 @@ if(APPLE)
     )
     set_target_properties(ninja_log_analyzer PROPERTIES
         MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_BINARY_DIR}/NinjaAnalyzerInfo.plist"
+        BUILD_WITH_INSTALL_RPATH TRUE
+        INSTALL_RPATH "@executable_path/../Frameworks"
     )
 endif()
 
