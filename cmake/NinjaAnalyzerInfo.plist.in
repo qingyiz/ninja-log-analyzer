@@ -10,6 +10,8 @@
     <string>@NINJA_ANALYZER_EXECUTABLE_NAME@</string>
     <key>CFBundleIdentifier</key>
     <string>com.codex.ninjaloganalyzer</string>
+    <key>CFBundleIconFile</key>
+    <string>@NINJA_ANALYZER_ICON_FILE@</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>

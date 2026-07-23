@@ -40,7 +40,8 @@ build/bin/Ninja Log Analyzer.app
 ```
 
 完成 `cmake --build build` 后，这个 `.app` 已包含 Qt Frameworks 和
-cocoa platform plugin，不依赖开发目录中的 Qt 安装即可启动。
+cocoa platform plugin，不依赖开发目录中的 Qt 安装即可启动；Finder 与
+Dock 使用 bundle 内置的 Ninja Log Analyzer 项目图标。
 Linux/Windows 的可执行文件也位于所选构建目录的 `bin` 中。源码避免平台专有 UI API；本次交付实际验证的平台是 macOS arm64，Qt 6.4.3 和 Qt 5.15.2。
 
 ### macOS 部署应用

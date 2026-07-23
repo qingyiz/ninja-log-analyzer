@@ -24,6 +24,7 @@
 | 5 | TASK-005 | 双 Qt、结构、Spec 和原生交付证据闭环 |
 | 6 | TASK-006 | macOS bundle 改为 build 根级唯一产物并重新闭环 |
 | 7 | TASK-007 | `build/bin` 直接生成自包含 macOS bundle 并重新闭环 |
+| 8 | TASK-008 | macOS build/install bundle 携带并声明项目自有图标 |
 
 ## 任务列表
 
@@ -132,6 +133,21 @@
   - 验证：Qt6/Qt5 全新 build+CTest；两套 build bundle 执行 `verify_delivery.py --require-self-contained`；build bundle 加载 demo 启动 smoke；install 副本复验；inspect/validate/git diff 审计。
   - 实施记录：将 macOS 单/多配置 app 输出统一为 `<build>/bin/Ninja Log Analyzer.app`，并在 app 的 POST_BUILD 中使用当前 Qt Kit 的 `macdeployqt` 收集 Frameworks/plugins；部署失败或缺 Frameworks、cocoa plugin、bundle RPATH、精确路径不符时直接使 build 失败。app target 显式统一 build/install RPATH 为 `@executable_path/../Frameworks`，install 只复制并复验完整 bundle，消除 CMake 对已改写旧 RPATH 的二次删除错误。全新 Qt5 Release 和 Qt6 Release 均在 `bin` 生成唯一 bundle，CTest 各 4/4 通过（Qt5 1.41s；Qt6 最新复验 0.65s）；两套 build bundle 和两套最新 install 副本均通过 0.6.0 `verify_delivery.py --require-self-contained`，包含 Qt Frameworks、`libqcocoa.dylib`、正确 LC_RPATH、arm64 主程序和 macOS 11.0 元数据。Qt5/Qt6 build bundle 加载 demo 后均持续运行 3 秒并受控退出，cocoa 启动 smoke 通过。`inspect_structure.py` 确认顶层仍为 38 行纯编排，生产文件无新复杂度触发；`git diff --check` 通过。覆盖 AC-004.1—4、PROP-005/006。
 
+- [x] TASK-008：为 macOS bundle 增加项目自有图标
+  - 类型：required
+  - 需求：REQ-004；NFR-002、NFR-004
+  - 设计：DEC-003 / BUILD-003 / macOS 应用束约束 / PROP-007
+  - 单一变更原因：修复 build/install 应用显示系统默认图标的问题。
+  - 模块/构建单元：`ninja_log_analyzer` app target。
+  - 架构约束：遵守 BUILD-003；图标资源就近归 app target 所有，delivery module 只验证最终 bundle，不向业务或顶层构建入口加入资源细节。
+  - 依赖变化：无 include/link 变化；app target 新增 `.icns` bundle resource。
+  - 平台/交付物：macOS build `<build>/bin/Ninja Log Analyzer.app/Contents/Resources/NinjaLogAnalyzer.icns` 与 install 副本；Windows/Linux 无变化。
+  - 依赖：TASK-007
+  - 修改范围：新增 `resources/icons` 图标母版/`.icns`，更新 app CMake、Info.plist、bundle 验证脚本、README 与本 Spec；不改业务代码和 UI。
+  - 产出：Finder/Dock 可识别的项目自有图标；标准 16—1024 像素层级；plist/资源一致。
+  - 验证：`iconutil` 展开层级；Qt5/Qt6 build+CTest；build/install bundle 检查 `CFBundleIconFile` 与资源；`verify_delivery.py --require-self-contained`；启动 smoke；图标预览。
+  - 实施记录：使用内置图像生成工具制作 1254px 母版，在纯色背景上生成深蓝圆角方形与三条并行构建线/速度切线标记；经官方 imagegen helper 去除背景并缩放为带 alpha 的 1024px PNG。使用 `sips` 生成 16、32、64、128、256、512、1024 像素表示并由 `iconutil` 打包为 `NinjaLogAnalyzer.icns`，反向展开确认 10 个标准 iconset 文件齐全，64px 与 bundle 内实际 icns 渲染目视清晰。app target 通过 `MACOSX_PACKAGE_LOCATION=Resources` 携带图标，Info.plist 声明 `CFBundleIconFile=NinjaLogAnalyzer.icns`；bundle 验证脚本检查 plist、资源，并用 `iconutil` 自动展开全部标准层级。Qt5/Qt6 全套 CTest 各 4/4 通过（2.26s/2.44s），新增图标交付测试复验分别 0.18s/0.17s；两套 build 与 install bundle 均存在图标并通过 `verify_delivery.py --require-self-contained`。Qt5/Qt6 应用加载 demo 后持续运行 3 秒，cocoa smoke 通过。Quick Look 服务在当前桌面会话阻塞，已中止；以 bundle 内 icns 的 `sips` 渲染和 plist/iconutil 自动证据替代，不影响 required 验收。`inspect_structure.py`、`git diff --check` 通过。覆盖 AC-004.6、PROP-007。
+
 ## 覆盖检查
 
 | 行为 | 实现任务 | 验证任务/证据 | 状态 |
@@ -139,13 +155,13 @@
 | REQ-001 | TASK-001 | application/core tests、demo 19/2/14 基线 | 已验证 |
 | REQ-002 | TASK-002 | Qt5/Qt6 offscreen GUI tests、双 Kit 启动 | 已验证 |
 | REQ-003 | TASK-003 | target graph、独立 targets、inspect、严格警告 build | 已验证 |
-| REQ-004 | TASK-004、TASK-006、TASK-007 | `build/bin` 自包含 bundle、双 Qt build/install、verify_delivery 和 cocoa smoke | 已验证（macOS arm64） |
+| REQ-004 | TASK-004、TASK-006、TASK-007、TASK-008 | `build/bin` 自包含 bundle、图标、双 Qt build/install、verify_delivery 和 cocoa smoke | 已验证（macOS arm64） |
 
 ## 完成门槛
 
 - [x] 所有 required 任务完成。
-- [x] REQ-001—004 与 PROP-001—006 均有最新验证证据。
+- [x] REQ-001—004 与 PROP-001—007 均有最新验证证据。
 - [x] Qt6/Qt5 构建与全部 CTest 通过，性能门槛保持。
-- [x] macOS `build/bin` bundle 的路径、结构、依赖、架构和启动均有原生证据。
+- [x] macOS `build/bin` bundle 的路径、图标、结构、依赖、架构和启动均有原生证据。
 - [x] 0.6.0 inspect/validate、架构依赖与代码—规格一致性审计通过。
 - [x] Windows/Linux 未验证状态、迁移/回滚、发布包不适用均明确记录。

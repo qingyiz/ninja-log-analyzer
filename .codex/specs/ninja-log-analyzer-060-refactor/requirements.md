@@ -22,6 +22,7 @@
 | FACT-008 | 先前根据“build 目录”反馈把 macOS bundle 从 `build/bin` 改到了 build 根目录 | 已验证 | commit `9915cb3`、原 TASK-006 | 该解释与用户最新明确路径不一致 |
 | FACT-009 | 用户最新明确要求 `build/bin` 下是完整 macOS 包 | 用户明确 | 2026-07-23 用户反馈 | build-tree 主交付物必须固定为 `<build>/bin/Ninja Log Analyzer.app` 且自包含 |
 | FACT-010 | 当前 build-tree bundle 只有 Info.plist/主程序，缺 Qt Frameworks、cocoa plugin，且 LC_RPATH 指向开发机 Qt5 | 已验证 | `du`、`find`、`otool -L/-l`、0.6.0 `verify_delivery.py --require-self-contained` | 只改输出路径不够，默认 build 必须执行 Qt runtime 部署 |
+| FACT-011 | 当前仓库没有图标资产，Info.plist 未声明 `CFBundleIconFile`，app target 也没有 bundle 资源 | 用户明确/已验证 | 2026-07-23 用户反馈；资源搜索；`src/app/CMakeLists.txt`、`cmake/NinjaAnalyzerInfo.plist.in` | macOS bundle 必须新增原生 `.icns` 并建立资源交付验证 |
 
 ### 技术与运行环境调查
 
@@ -43,6 +44,7 @@
 - `MainWindow` 不再直接 include/call parser、manifest、analyzer；每个结果页独立拥有视图。
 - 顶层 CMake 只负责编排，GUI 源码不在 app/test 中重复列出。
 - Qt6 与 Qt5 分别完成干净配置、build、CTest；macOS build bundle 必须位于 `<build>/bin/Ninja Log Analyzer.app`，且默认 build 后即通过自包含检查。
+- macOS build/install bundle 必须显示项目自有图标，不能回退为系统默认应用图标。
 - 0.6.0 `inspect_structure.py`、`validate_spec.py` 和 Spec complete 全部通过。
 
 ### 非目标
@@ -84,6 +86,7 @@
 3. 失败或取消仍保留最近成功结果。
 4. 维护者可以分别构建 core/application/gui/app/test targets。
 5. macOS 维护者完成默认 build 后，直接在 `build/bin` 获得已收集 Qt runtime 的 `.app`；需要独立前缀时再 install 到 stage。
+6. 用户在 Finder、Dock 或应用切换器中看到 Ninja Log Analyzer 自有图标，而不是默认应用图标。
 
 ## 功能需求
 
@@ -146,6 +149,7 @@
 - AC-004.3：`<build>/bin` bundle 应当包含 Qt frameworks 与 cocoa platform plugin；install 后 `<stage>/Ninja Log Analyzer.app` 应保持同一完整性。
 - AC-004.4：`<build>/bin` bundle 的非系统依赖不得解析到开发机 Qt 绝对路径，并应当能直接启动加载 demo。
 - AC-004.5：如果是 Windows/Linux 配置，系统应当保持可执行 target 和通用 install 规则，但只有原生 runner 验证后才能标记该平台已交付。
+- AC-004.6：macOS build/install bundle 应当包含 `Contents/Resources/NinjaLogAnalyzer.icns`；Info.plist 的 `CFBundleIconFile` 应当引用该文件，且 `.icns` 应包含 16、32、128、256、512、1024 像素的标准图标表示。
 
 ## 非功能需求
 
@@ -165,6 +169,7 @@
 | parser 失败 | service 返回 error，无半成品提交 | REQ-001、REQ-002 |
 | 过滤结果为空 | 两明细页均为空，摘要不变 | REQ-002 |
 | `macdeployqt` 缺失/失败 | build/install 命令失败并报告，不伪称自包含 | REQ-004 |
+| 图标资源缺失或 Info.plist 未声明 | bundle 交付验证失败，不把默认系统图标视为完成 | REQ-004 |
 | 非 macOS host | 不执行 macOS deployment；平台状态未验证 | REQ-004 |
 
 ## 约束、假设与风险
@@ -195,6 +200,7 @@
 | ANA-004 | 缺口 | REQ-004 | Windows/Linux 无 runner | 保持源码设计，明确未验证，不阻塞 macOS required |
 | ANA-005 | 规格漂移 | REQ-004 | 原 AC-004.1 接受 `build/bin`，但用户明确要求 build 根目录，导致“bundle 已生成”与用户检查路径不一致 | 保留 AC ID，修正为 build 根级唯一 bundle；Windows/Linux 的 bin 约定不变；新增 PROP-006 和 TASK-006 |
 | ANA-006 | 规格漂移 | REQ-004 | 用户进一步明确检查的是 `build/bin`，且要求该处是“完整 mac 包”；此前只把完整依赖部署到 stage | 以最新明确要求为准：保留 AC ID，恢复 `build/bin` 精确路径，并把自包含检查前移到默认 build；新增 TASK-007 |
+| ANA-007 | 交付缺口 | REQ-004 | bundle 结构、依赖和启动已通过，但没有应用图标资源，因此 Finder 仍显示默认图标 | 在 app 构建单元新增 `.icns` 资源、Info.plist 契约和原生验证；新增 PROP-007 / TASK-008 |
 
 ## 需求追踪
 
