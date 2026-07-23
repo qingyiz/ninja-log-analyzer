@@ -1,0 +1,5 @@
+<RCC>
+  <qresource prefix="/ninja-analyzer/ui">
+    <file>chevron-down.svg</file>
+  </qresource>
+</RCC>

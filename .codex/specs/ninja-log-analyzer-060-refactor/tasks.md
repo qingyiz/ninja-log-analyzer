@@ -4,11 +4,11 @@
 >
 > 状态：已执行完成
 >
-> 最近更新：2026-07-23
+> 最近更新：2026-07-24
 
 ## 执行策略
 
-- 所有 5 项均为 required；按依赖顺序执行，每项实现与直接测试同批完成。
+- 所有 9 项均为 required；按依赖顺序执行，每项实现与直接测试同批完成。
 - 不重写 core 算法；若回归暴露 core 缺陷，先重开 design/requirements，不在重构中顺手扩张。
 - 每项只有一个主要模块/构建单元；跨模块仅通过设计中公开契约连接。
 - macOS deployment 只在本机原生验证；Windows/Linux 明确为未验证。
@@ -25,6 +25,7 @@
 | 6 | TASK-006 | macOS bundle 改为 build 根级唯一产物并重新闭环 |
 | 7 | TASK-007 | `build/bin` 直接生成自包含 macOS bundle 并重新闭环 |
 | 8 | TASK-008 | macOS build/install bundle 携带并声明项目自有图标 |
+| 9 | TASK-009 | 筛选组合框与结果标签栏使用统一的项目视觉样式 |
 
 ## 任务列表
 
@@ -148,19 +149,34 @@
   - 验证：`iconutil` 展开层级；Qt5/Qt6 build+CTest；build/install bundle 检查 `CFBundleIconFile` 与资源；`verify_delivery.py --require-self-contained`；启动 smoke；图标预览。
   - 实施记录：使用内置图像生成工具制作 1254px 母版，在纯色背景上生成深蓝圆角方形与三条并行构建线/速度切线标记；经官方 imagegen helper 去除背景并缩放为带 alpha 的 1024px PNG。使用 `sips` 生成 16、32、64、128、256、512、1024 像素表示并由 `iconutil` 打包为 `NinjaLogAnalyzer.icns`，反向展开确认 10 个标准 iconset 文件齐全，64px 与 bundle 内实际 icns 渲染目视清晰。app target 通过 `MACOSX_PACKAGE_LOCATION=Resources` 携带图标，Info.plist 声明 `CFBundleIconFile=NinjaLogAnalyzer.icns`；bundle 验证脚本检查 plist、资源，并用 `iconutil` 自动展开全部标准层级。Qt5/Qt6 全套 CTest 各 4/4 通过（2.26s/2.44s），新增图标交付测试复验分别 0.18s/0.17s；两套 build 与 install bundle 均存在图标并通过 `verify_delivery.py --require-self-contained`。Qt5/Qt6 应用加载 demo 后持续运行 3 秒，cocoa smoke 通过。Quick Look 服务在当前桌面会话阻塞，已中止；以 bundle 内 icns 的 `sips` 渲染和 plist/iconutil 自动证据替代，不影响 required 验收。`inspect_structure.py`、`git diff --check` 通过。覆盖 AC-004.6、PROP-007。
 
+- [x] TASK-009：统一筛选组合框与结果标签栏视觉
+  - 类型：required
+  - 需求：REQ-002 / AC-002.5；NFR-002、NFR-003、NFR-004
+  - 设计：DEC-004 / AppStyle、AnalysisResultsWidget / ARCH-002、BUILD-002 / PROP-008
+  - 单一变更原因：消除 macOS 平台原生组合框和标签子控件与项目视觉体系混用的问题。
+  - 模块/构建单元：`ninja_analyzer_gui`。
+  - 架构约束：遵守 ARCH-002、BUILD-002；视觉资源和规则归 presentation target，就近编译，不修改 application/core 或顶层构建入口。
+  - 依赖变化：无生产层级依赖变化；GUI target 新增 Qt resource 输入。
+  - 平台/交付物：平台无关 Qt Widgets UI；在 macOS arm64 Qt5/Qt6 原生渲染验证；最终仍由现有 `.app` 携带。
+  - 依赖：TASK-008
+  - 修改范围：`src/gui/AppStyle.cpp`、`src/gui/AnalysisResultsWidget.cpp`、`src/gui/CMakeLists.txt`、新增 `resources/ui` SVG/qrc、`tests/tst_mainwindow.cpp` 与本 Spec；不改数据、筛选、页面内容和交付路径。
+  - 产出：统一圆角组合框、项目 chevron、弹出列表状态和圆角分段标签栏；原有交互及计数保持。
+  - 验证：Qt5/Qt6 GUI CTest；全套 CTest；demo 视觉快照；结构审计、Spec validate、`git diff --check`。
+  - 实施记录：`AppStyle` 补齐 `QComboBox` 的独立内边距、hover/focus、drop-down、down-arrow 和 popup item 规则，新增 12×8 SVG chevron；GUI target 就近编译 qrc，并由 `AppStyle` 显式初始化，避免静态库资源被链接器裁剪。`AnalysisResultsWidget` 为内部 tab bar 设置 `resultTabBar` 对象名并关闭原生 base，只在该标签栏上应用轻灰圆角容器、白色选中片和紫色选中态，消除用户截图中的右侧黑线与灰色直角块。GUI 回归新增资源存在、对象名、关键规则和 tab 切换检查。Qt5/Qt6 GUI CTest 分别通过（0.67s/1.52s），完整 CTest 均 4/4 通过（0.85s/0.75s）；两套 Cocoa demo 快照目视确认组合框和标签栏一致，实际 Qt5/Qt6 `.app` 加载 demo 后均持续运行 3 秒。两套 build bundle 再次通过 0.6.0 `verify_delivery.py --require-self-contained`。覆盖 AC-002.5、PROP-008。
+
 ## 覆盖检查
 
 | 行为 | 实现任务 | 验证任务/证据 | 状态 |
 |---|---|---|---|
 | REQ-001 | TASK-001 | application/core tests、demo 19/2/14 基线 | 已验证 |
-| REQ-002 | TASK-002 | Qt5/Qt6 offscreen GUI tests、双 Kit 启动 | 已验证 |
+| REQ-002 | TASK-002、TASK-009 | Qt5/Qt6 offscreen GUI tests、双 Kit 启动和视觉快照 | 已验证 |
 | REQ-003 | TASK-003 | target graph、独立 targets、inspect、严格警告 build | 已验证 |
 | REQ-004 | TASK-004、TASK-006、TASK-007、TASK-008 | `build/bin` 自包含 bundle、图标、双 Qt build/install、verify_delivery 和 cocoa smoke | 已验证（macOS arm64） |
 
 ## 完成门槛
 
 - [x] 所有 required 任务完成。
-- [x] REQ-001—004 与 PROP-001—007 均有最新验证证据。
+- [x] REQ-001—004 与 PROP-001—008 均有最新验证证据。
 - [x] Qt6/Qt5 构建与全部 CTest 通过，性能门槛保持。
 - [x] macOS `build/bin` bundle 的路径、图标、结构、依赖、架构和启动均有原生证据。
 - [x] 0.6.0 inspect/validate、架构依赖与代码—规格一致性审计通过。

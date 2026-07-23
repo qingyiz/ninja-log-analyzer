@@ -1,4 +1,5 @@
 add_library(ninja_analyzer_gui STATIC
+    "${PROJECT_SOURCE_DIR}/resources/ui/ninja_analyzer_ui.qrc"
     AnalysisResultsWidget.cpp
     AnalysisResultsWidget.h
     AppStyle.cpp

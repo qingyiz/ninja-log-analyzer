@@ -6,7 +6,7 @@
 >
 > 状态：已完成
 >
-> 最近更新：2026-07-23
+> 最近更新：2026-07-24
 
 ## 事实与环境基线
 
@@ -23,6 +23,7 @@
 | FACT-009 | 用户最新明确要求 `build/bin` 下是完整 macOS 包 | 用户明确 | 2026-07-23 用户反馈 | build-tree 主交付物必须固定为 `<build>/bin/Ninja Log Analyzer.app` 且自包含 |
 | FACT-010 | 当前 build-tree bundle 只有 Info.plist/主程序，缺 Qt Frameworks、cocoa plugin，且 LC_RPATH 指向开发机 Qt5 | 已验证 | `du`、`find`、`otool -L/-l`、0.6.0 `verify_delivery.py --require-self-contained` | 只改输出路径不够，默认 build 必须执行 Qt runtime 部署 |
 | FACT-011 | 当前仓库没有图标资产，Info.plist 未声明 `CFBundleIconFile`，app target 也没有 bundle 资源 | 用户明确/已验证 | 2026-07-23 用户反馈；资源搜索；`src/app/CMakeLists.txt`、`cmake/NinjaAnalyzerInfo.plist.in` | macOS bundle 必须新增原生 `.icns` 并建立资源交付验证 |
+| FACT-012 | 筛选栏组合框仍显示原生下拉子控件，结果标签栏使用灰色直角块，与现有白色圆角卡片和紫色主色体系不一致 | 用户明确/已验证 | 2026-07-24 用户截图；`src/gui/AppStyle.cpp`、`src/gui/AnalysisResultsWidget.cpp` | 补齐组合框子控件、弹出列表和结果标签栏的统一视觉契约 |
 
 ### 技术与运行环境调查
 
@@ -45,6 +46,7 @@
 - 顶层 CMake 只负责编排，GUI 源码不在 app/test 中重复列出。
 - Qt6 与 Qt5 分别完成干净配置、build、CTest；macOS build bundle 必须位于 `<build>/bin/Ninja Log Analyzer.app`，且默认 build 后即通过自包含检查。
 - macOS build/install bundle 必须显示项目自有图标，不能回退为系统默认应用图标。
+- 筛选栏与结果标签栏应使用一致的圆角、边框、留白和紫色交互状态，不混入原生黑色分隔线或大块灰色标签背景。
 - 0.6.0 `inspect_structure.py`、`validate_spec.py` 和 Spec complete 全部通过。
 
 ### 非目标
@@ -118,6 +120,7 @@
 - AC-002.2：当类型或路径过滤变化时，慢任务行数、时间线输入和两个 tab 计数应当一致，完整摘要保持当前批次口径。
 - AC-002.3：在已有成功结果下，如果新加载失败或候选选择取消，系统应当保持当前日志、批次和页面结果。
 - AC-002.4：当概览图/表发出类型或任务下钻时，系统应当更新过滤并导航到慢任务页。
+- AC-002.5：在 macOS Qt5/Qt6 界面中，批次与类型组合框应使用项目自有下拉箭头、统一圆角边框和悬停/聚焦状态；结果标签栏应呈现圆角分段样式，选中项使用紫色强调，且不得出现原生黑色分隔线或不一致的灰色直角块。
 
 ### REQ-003：建立可执行的模块与构建边界
 
@@ -170,6 +173,7 @@
 | 过滤结果为空 | 两明细页均为空，摘要不变 | REQ-002 |
 | `macdeployqt` 缺失/失败 | build/install 命令失败并报告，不伪称自包含 | REQ-004 |
 | 图标资源缺失或 Info.plist 未声明 | bundle 交付验证失败，不把默认系统图标视为完成 | REQ-004 |
+| UI 图标资源无法加载 | GUI 回归失败，不回退为平台原生组合框残片 | REQ-002 |
 | 非 macOS host | 不执行 macOS deployment；平台状态未验证 | REQ-004 |
 
 ## 约束、假设与风险
@@ -201,13 +205,14 @@
 | ANA-005 | 规格漂移 | REQ-004 | 原 AC-004.1 接受 `build/bin`，但用户明确要求 build 根目录，导致“bundle 已生成”与用户检查路径不一致 | 保留 AC ID，修正为 build 根级唯一 bundle；Windows/Linux 的 bin 约定不变；新增 PROP-006 和 TASK-006 |
 | ANA-006 | 规格漂移 | REQ-004 | 用户进一步明确检查的是 `build/bin`，且要求该处是“完整 mac 包”；此前只把完整依赖部署到 stage | 以最新明确要求为准：保留 AC ID，恢复 `build/bin` 精确路径，并把自包含检查前移到默认 build；新增 TASK-007 |
 | ANA-007 | 交付缺口 | REQ-004 | bundle 结构、依赖和启动已通过，但没有应用图标资源，因此 Finder 仍显示默认图标 | 在 app 构建单元新增 `.icns` 资源、Info.plist 契约和原生验证；新增 PROP-007 / TASK-008 |
+| ANA-008 | 视觉回归 | REQ-002 | 全局 QSS 只覆盖 `QComboBox` 外框和 `QTabBar::tab` 文本/下划线，macOS 原生子控件仍参与绘制 | 为结果标签栏增加专用对象名；由 presentation 模块拥有 SVG 下拉箭头和完整 QSS；新增 PROP-008 / TASK-009 |
 
 ## 需求追踪
 
 | 需求 | 验收标准 | 成功证据 |
 |---|---|---|
 | REQ-001 | AC-001.1—3 | application/core tests、demo |
-| REQ-002 | AC-002.1—4 | offscreen GUI tests |
+| REQ-002 | AC-002.1—5 | offscreen GUI tests、Qt5/Qt6 视觉快照 |
 | REQ-003 | AC-003.1—4 | target build、inspect、CMake审查 |
 | REQ-004 | AC-004.1—5 | bundle/install/deploy/verify_delivery/start smoke |
 
