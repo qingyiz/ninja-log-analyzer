@@ -27,6 +27,13 @@ set_target_properties(ninja_log_analyzer PROPERTIES
 )
 
 if(APPLE)
+    set(ninja_analyzer_icon
+        "${PROJECT_SOURCE_DIR}/resources/icons/NinjaLogAnalyzer.icns")
+    set_source_files_properties("${ninja_analyzer_icon}" PROPERTIES
+        MACOSX_PACKAGE_LOCATION "Resources"
+    )
+    target_sources(ninja_log_analyzer PRIVATE "${ninja_analyzer_icon}")
+
     foreach(configuration DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
         set_target_properties(ninja_log_analyzer PROPERTIES
             "RUNTIME_OUTPUT_DIRECTORY_${configuration}"
@@ -35,6 +42,7 @@ if(APPLE)
     endforeach()
 
     set(NINJA_ANALYZER_EXECUTABLE_NAME "Ninja Log Analyzer")
+    set(NINJA_ANALYZER_ICON_FILE "NinjaLogAnalyzer.icns")
     configure_file(
         "${PROJECT_SOURCE_DIR}/cmake/NinjaAnalyzerInfo.plist.in"
         "${CMAKE_CURRENT_BINARY_DIR}/NinjaAnalyzerInfo.plist"
@@ -42,6 +50,7 @@ if(APPLE)
     )
     set_target_properties(ninja_log_analyzer PROPERTIES
         MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_BINARY_DIR}/NinjaAnalyzerInfo.plist"
+        MACOSX_BUNDLE_ICON_FILE "${NINJA_ANALYZER_ICON_FILE}"
         BUILD_WITH_INSTALL_RPATH TRUE
         INSTALL_RPATH "@executable_path/../Frameworks"
     )

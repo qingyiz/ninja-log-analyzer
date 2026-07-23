@@ -31,6 +31,7 @@
 | 原规格 | `.codex/specs/ninja-log-analyzer/*` 与 0.6.0 `validate_spec.py` | 功能规格已完成，但缺 0.6.0 的 ARCH/BUILD/复杂度/任务字段 | 新建重构 Spec，保留旧 Spec 作为原功能证据 |
 | 交付路径回归 | `find build -maxdepth 5 -name '*.app'`、`src/app/CMakeLists.txt`、2026-07-23 用户反馈 | 当前 bundle 实际位于 `build/bin/Ninja Log Analyzer.app`；用户明确要求它直接位于 build 根目录 | 修正 macOS build-tree 精确路径并增加自动回归，不能只验证“某处存在 .app” |
 | 最新交付反馈 | 2026-07-23 用户明确指出 `build/bin` 不是完整 mac 包 | 精确路径应为 `build/bin`，且 `.app` 必须包含运行所需 Qt Frameworks/plugins | TASK-006 的根级路径契约被替代；部署动作前移到 build target |
+| 图标交付缺口 | 资源搜索、Info.plist、app CMake、2026-07-23 用户反馈 | 仓库无 `.icns`，Info.plist 无图标键，app target 无 bundle 资源 | 图标由 app 构建单元所有，并纳入 build/install bundle 验证 |
 
 ### 工具链与兼容性基线
 
@@ -75,7 +76,7 @@
 ### DEC-003：build-tree 直接生成自包含部署 bundle
 
 - 上下文与需求：REQ-004。
-- 决策：macOS 主交付物固定为 `<build>/bin/Ninja Log Analyzer.app`；app target 链接完成后立即使用 active Qt Kit 的 `macdeployqt` 收集运行时并验证。`cmake --install --prefix <stage>` 保留为完整 bundle 的安装副本；发布包、签名和公证本轮不适用。
+- 决策：macOS 主交付物固定为 `<build>/bin/Ninja Log Analyzer.app`；app target 链接完成后立即使用 active Qt Kit 的 `macdeployqt` 收集运行时并验证，同时携带项目自有 `.icns` 图标。`cmake --install --prefix <stage>` 保留为完整 bundle 的安装副本；发布包、签名和公证本轮不适用。
 - 理由：用户明确从 `build/bin` 取包；编译成功不等于可分发，完整依赖不能只存在于另一个 stage 目录。
 - 代价：首次及重新链接 app 的构建时间和磁盘占用增加；签名仍需外部凭据。
 - 被否决方案：把 bundle 内裸可执行文件当作交付物；无证据新增 DMG。
@@ -150,7 +151,7 @@ flowchart LR
 
 ### BUILD-003：平台交付规则不进入模块编译清单
 
-- macOS bundle 输出、安装、部署工具探测和 install-time 部署由 delivery module 负责。
+- macOS bundle 输出、安装、部署工具探测和 install-time 部署由 delivery module 负责；图标资源由 app target 就近声明，delivery module 只验证最终资源契约。
 - Windows/Linux 只定义 build-tree executable/install runtime 的通用 CMake 语义；未在本机生成发布包。
 
 | 构建单元/Target | 类型 | 所有模块 | 公开依赖 | 私有依赖 | 定义位置 | 验证单元 |
@@ -169,16 +170,16 @@ flowchart LR
 
 | 目标平台/架构 | 开发构建物及精确路径 | 安装/部署产物 | 最终发布包 | 运行时依赖与资源 | 原生验证命令/证据 |
 |---|---|---|---|---|---|
-| macOS 11.0+ / arm64 | `<build>/bin/Ninja Log Analyzer.app`（自包含） | `<stage>/Ninja Log Analyzer.app` | 不适用（本轮不签名/公证/DMG） | build/install bundle 均含 Qt Frameworks、PlugIns/platforms、Info.plist | 全新 build；CTest；两处 `verify_delivery.py --require-self-contained`；build bundle 启动 smoke |
+| macOS 11.0+ / arm64 | `<build>/bin/Ninja Log Analyzer.app`（自包含） | `<stage>/Ninja Log Analyzer.app` | 不适用（本轮不签名/公证/DMG） | build/install bundle 均含 Qt Frameworks、PlugIns/platforms、Info.plist、`Resources/NinjaLogAnalyzer.icns` | 全新 build；CTest；两处 `verify_delivery.py --require-self-contained`；plist/iconset 检查；build bundle 启动 smoke |
 | Windows / 未确认 | `<build>/bin/Ninja Log Analyzer.exe`（设计契约） | `<prefix>/bin/...exe`（未验证） | 不适用 | DLL/plugins 未验证 | 本轮无原生 runner，明确未验证 |
 | Linux / 未确认 | `<build>/bin/ninja_log_analyzer`（设计契约） | `<prefix>/bin/...`（未验证） | 不适用 | so/plugins 未验证 | 本轮无原生 runner，明确未验证 |
 
 ### macOS 应用束约束
 
 - `.app` 根路径：主交付 `<build>/bin/Ninja Log Analyzer.app`；安装副本 `<stage>/Ninja Log Analyzer.app`。`<build>` 根目录不得存在第二份 macOS bundle。
-- `Contents/Info.plist`：`CFBundleIdentifier=com.codex.ninjaloganalyzer`、显示名/可执行名、项目版本、`LSMinimumSystemVersion=11.0`。
+- `Contents/Info.plist`：`CFBundleIdentifier=com.codex.ninjaloganalyzer`、显示名/可执行名、项目版本、`LSMinimumSystemVersion=11.0`、`CFBundleIconFile=NinjaLogAnalyzer.icns`。
 - `Contents/MacOS/<CFBundleExecutable>`：`Contents/MacOS/Ninja Log Analyzer`，Mach-O arm64。
-- Resources、Frameworks、PlugIns：无业务资源；build/install bundle 都必须包含 Qt frameworks 与 cocoa platform plugin。
+- Resources、Frameworks、PlugIns：`Contents/Resources/NinjaLogAnalyzer.icns` 是 app 自有资源；build/install bundle 都必须包含该图标、Qt frameworks 与 cocoa platform plugin。
 - Qt/框架部署方式：使用 active Qt Kit 中已探测到的 `macdeployqt`，不能混用 Qt5/Qt6 工具。
 - 签名、公证、架构和启动验证：adhoc/开发签名不作为发布签名；不公证；`file` 验 arm64；直接启动可执行并加载 demo 后受控退出作为 smoke。
 
@@ -299,6 +300,12 @@ sequenceDiagram
 - 属性：对于任意受支持的 macOS 单配置构建目录，构建 `ninja_log_analyzer` 后，bundle 必须位于 `<build>/bin/Ninja Log Analyzer.app`，根目录无同名副本，并包含 Frameworks、cocoa plugin 和 bundle Frameworks RPATH。
 - 验证：仓库 post-build/CTest 精确检查 + 全新 `build` 目录 + `verify_delivery.py --require-self-contained` + 启动 smoke。
 
+### PROP-007：macOS 图标资源与清单一致
+
+- 来源：REQ-004 / AC-004.6。
+- 属性：任意通过交付验证的 macOS build/install bundle，其 `CFBundleIconFile` 必须解析到 `Contents/Resources/NinjaLogAnalyzer.icns`；该文件可由 `iconutil` 展开，并包含 16、32、128、256、512、1024 像素表示。
+- 验证：post-build/CTest 检查 plist 与资源存在；`iconutil --convert iconset` 检查标准层级；Finder Quick Look/图标预览作人工补充。
+
 ## 测试策略
 
 | 行为/属性 | 测试层级 | 关键场景 | 证据形式 |
@@ -306,7 +313,7 @@ sequenceDiagram
 | REQ-001 / PROP-001 | application + core | 单日志、manifest、错误日志、批次 | QtTest/CTest |
 | REQ-002 / PROP-002/003 | GUI component | 成功、批次、过滤、失败保持、页面下钻 | offscreen QtTest |
 | REQ-003 / PROP-004 | build/静态审查 | target 独立 build、include/link 方向、结构预算 | CMake build + inspect script |
-| REQ-004 / PROP-005/006 | 原生交付 | Qt6/Qt5 build app、`bin` 精确路径、build/install 自包含、启动 | CMake/CTest/verify_delivery/file/启动 smoke |
+| REQ-004 / PROP-005/006/007 | 原生交付 | Qt6/Qt5 build app、`bin` 精确路径、图标、build/install 自包含、启动 | CMake/CTest/verify_delivery/plist/iconutil/file/启动 smoke |
 
 ## 需求覆盖矩阵
 
@@ -315,7 +322,7 @@ sequenceDiagram
 | REQ-001 | AnalysisService | ARCH-001/003、BUILD-001/002 | DEC-001 | PROP-001 | application/core |
 | REQ-002 | MainWindow、Results pages | ARCH-002/003、BUILD-002 | DEC-001 | PROP-002/003 | GUI |
 | REQ-003 | 所有 modules/targets | ARCH-001/002、BUILD-001/002 | DEC-002 | PROP-004 | build/structure |
-| REQ-004 | app + delivery module | ARCH-001、BUILD-003 | DEC-003 | PROP-005/006 | native delivery |
+| REQ-004 | app + delivery module | ARCH-001、BUILD-003 | DEC-003 | PROP-005/006/007 | native delivery |
 
 ## 风险与未决问题
 
