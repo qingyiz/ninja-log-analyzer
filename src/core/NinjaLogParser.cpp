@@ -68,8 +68,9 @@ ParseResult NinjaLogParser::parse(const QString &logPath)
 
     bool versionOk = false;
     result.version = match.captured(1).toInt(&versionOk);
-    if (!versionOk || (result.version != 4 && result.version != 5)) {
-        result.fatalError = QStringLiteral("不支持 Ninja 日志 v%1；当前仅支持 v4 和 v5。")
+    if (!versionOk
+        || (result.version != 4 && result.version != 5 && result.version != 7)) {
+        result.fatalError = QStringLiteral("不支持 Ninja 日志 v%1；当前仅支持 v4、v5 和 v7。")
                                 .arg(match.captured(1));
         return result;
     }
@@ -132,20 +133,22 @@ ParseResult NinjaLogParser::parse(const QString &logPath)
         record.commandField = QString::fromUtf8(commandField);
         record.sourceLine = sourceLine;
 
-        if (result.version == 5) {
+        if (result.version == 5 || result.version == 7) {
             bool hashOk = false;
             if (!isHexField(commandField)) {
                 addWarning(result, sourceLine,
-                           QStringLiteral("v5 命令哈希不是十六进制，已忽略该行。"));
+                           QStringLiteral("v%1 命令哈希不是十六进制，已忽略该行。")
+                               .arg(result.version));
                 continue;
             }
             record.commandHash = commandField.toULongLong(&hashOk, 16);
             if (!hashOk) {
                 addWarning(result, sourceLine,
-                           QStringLiteral("v5 命令哈希超出 64 位范围，已忽略该行。"));
+                           QStringLiteral("v%1 命令哈希超出 64 位范围，已忽略该行。")
+                               .arg(result.version));
                 continue;
             }
-            record.hasV5Hash = true;
+            record.hasCommandHash = true;
         }
 
         result.records.append(record);

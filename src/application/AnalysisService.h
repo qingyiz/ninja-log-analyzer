@@ -1,5 +1,6 @@
 #pragma once
 
+#include "application/MachineLoadSnapshot.h"
 #include "core/NinjaLogTypes.h"
 
 #include <QString>
@@ -13,6 +14,7 @@ struct LoadedAnalysis {
     ManifestInfo manifest;
     QVector<NinjaLogRecord> records;
     QVector<BuildBatch> batches;
+    MachineLoadSnapshot machineLoad;
 };
 
 struct AnalysisLoadResult {

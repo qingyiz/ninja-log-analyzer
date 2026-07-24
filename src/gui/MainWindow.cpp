@@ -1,5 +1,6 @@
 #include "gui/MainWindow.h"
 
+#include "application/AnalysisReportExporter.h"
 #include "gui/AnalysisResultsWidget.h"
 #include "gui/AppStyle.h"
 #include "gui/CategoryPalette.h"
@@ -75,6 +76,11 @@ void MainWindow::buildInterface()
     titles->addWidget(title);
     titles->addWidget(subtitle);
     headerLayout->addLayout(titles, 1);
+    exportReportButton_ = new QPushButton(tr("导出完整报告"), header);
+    exportReportButton_->setObjectName(QStringLiteral("exportReportButton"));
+    exportReportButton_->setEnabled(false);
+    connect(exportReportButton_, &QPushButton::clicked, this, &MainWindow::exportReport);
+    headerLayout->addWidget(exportReportButton_);
     auto *about = new QPushButton(tr("指标说明"), header);
     about->setObjectName(QStringLiteral("ghostButton"));
     connect(about, &QPushButton::clicked, this, &MainWindow::showAbout);
@@ -89,7 +95,7 @@ void MainWindow::buildInterface()
     auto *sourceTitle = new QLabel(tr("构建日志"), source);
     sourceTitle->setObjectName(QStringLiteral("sectionTitle"));
     sourceHeader->addWidget(sourceTitle);
-    auto *sourceHint = new QLabel(tr("支持 .ninja_log 或构建目录"), source);
+    auto *sourceHint = new QLabel(tr("按内容识别 v4 / v5 / v7，文件名不限"), source);
     sourceHint->setObjectName(QStringLiteral("sectionHint"));
     sourceHeader->addWidget(sourceHint);
     sourceHeader->addStretch();
@@ -97,7 +103,7 @@ void MainWindow::buildInterface()
     auto *pathLayout = new QHBoxLayout;
     pathEdit_ = new QLineEdit(source);
     pathEdit_->setObjectName(QStringLiteral("pathEdit"));
-    pathEdit_->setPlaceholderText(tr("输入 .ninja_log 文件，或包含它的构建目录…"));
+    pathEdit_->setPlaceholderText(tr("输入 Ninja 日志文件（任意名称），或包含日志的目录…"));
     pathEdit_->setClearButtonEnabled(true);
     connect(pathEdit_, &QLineEdit::returnPressed, this, [this] { analyzePath(pathEdit_->text()); });
     pathLayout->addWidget(pathEdit_, 1);
@@ -155,7 +161,13 @@ void MainWindow::buildInterface()
         tr("批次决定结论和汇总范围；类型与搜索只筛选“慢任务”和“时间线”。"),
         analysisControls_);
     scopeHint->setObjectName(QStringLiteral("scopeHint"));
+    scopeHint->setWordWrap(true);
     controlsOuter->addWidget(scopeHint);
+    machineLoadLabel_ = new QLabel(analysisControls_);
+    machineLoadLabel_->setObjectName(QStringLiteral("machineLoadContext"));
+    machineLoadLabel_->setWordWrap(true);
+    machineLoadLabel_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    controlsOuter->addWidget(machineLoadLabel_);
     analysisControls_->hide();
     rootLayout->addWidget(analysisControls_);
 
@@ -182,7 +194,8 @@ void MainWindow::buildInterface()
     rootLayout->addWidget(resultFrame_, 1);
 
     initialLabel_ = new QLabel(
-        tr("把 .ninja_log 拖到这里，或从上方选择文件\n\n分析在本地完成，不会运行 Ninja 或修改构建目录"),
+        tr("选择任意名称的 Ninja 日志，软件会按内容识别 v4 / v5 / v7\n\n"
+           "分析在本地完成，不会运行 Ninja 或修改构建目录"),
         central);
     initialLabel_->setObjectName(QStringLiteral("initialState"));
     initialLabel_->setAlignment(Qt::AlignCenter);
@@ -204,13 +217,13 @@ bool MainWindow::analyzePath(const QString &path, bool interactive)
     } else if (interactive) {
         bool accepted = false;
         selectedPath = QInputDialog::getItem(
-            this, tr("选择 Ninja 日志"), tr("目录中发现多个 .ninja_log，请选择要分析的文件："),
+            this, tr("选择 Ninja 日志"), tr("目录中发现多个 Ninja 日志，请选择要分析的文件："),
             located.logPaths, 0, false, &accepted);
         if (!accepted || selectedPath.isEmpty()) {
             return false;
         }
     } else {
-        return reportFailure(tr("发现多个 .ninja_log；非交互加载无法代替用户选择。"), false);
+        return reportFailure(tr("发现多个 Ninja 日志；非交互加载无法代替用户选择。"), false);
     }
 
     AnalysisLoadResult result = analysisService_.loadLog(selectedPath);
@@ -220,6 +233,7 @@ bool MainWindow::analyzePath(const QString &path, bool interactive)
 
     loaded_ = std::move(result.value);
     hasAnalysis_ = true;
+    exportReportButton_->setEnabled(true);
     lastError_.clear();
     pathEdit_->setText(loaded_.logPath);
     QStringList details{tr("日志：%1").arg(loaded_.logPath),
@@ -262,7 +276,8 @@ void MainWindow::applySelectedBatch()
     if (!hasAnalysis_ || batchCombo_->currentIndex() < 0) {
         return;
     }
-    currentRecords_ = analysisService_.recordsForBatch(loaded_, batchCombo_->currentData().toInt());
+    currentBatchIndex_ = batchCombo_->currentData().toInt();
+    currentRecords_ = analysisService_.recordsForBatch(loaded_, currentBatchIndex_);
     currentAnalysis_ = analysisService_.analyze(currentRecords_);
     refreshLoadedState();
 }
@@ -287,6 +302,18 @@ void MainWindow::refreshLoadedState()
                      ? tr("规则分类已匹配 %1/%2").arg(manifestMatches).arg(loaded_.records.size())
                      : tr("按输出路径推断分类")));
     diagnosticsLabel_->show();
+    const MachineLoadSnapshot &load = loaded_.machineLoad;
+    machineLoadLabel_->setText(
+        tr("当前机器快照（%1）：%2；%3；%4。\n%5")
+            .arg(load.capturedAtUtc.isValid()
+                     ? load.capturedAtUtc.toLocalTime().toString(Qt::ISODate)
+                     : tr("采集时间不可用"))
+            .arg(load.platformDescription())
+            .arg(load.logicalProcessorCount > 0
+                     ? tr("%1 个逻辑处理器").arg(load.logicalProcessorCount)
+                     : tr("逻辑处理器数不可用"))
+            .arg(load.loadAverageDescription())
+            .arg(MachineLoadSnapshot::limitationText()));
     analysisControls_->show();
     resultFrame_->show();
     initialLabel_->hide();
@@ -328,7 +355,8 @@ bool MainWindow::reportFailure(const QString &message, bool interactive)
 void MainWindow::selectLogFile()
 {
     const QString selected = QFileDialog::getOpenFileName(
-        this, tr("选择 .ninja_log"), pathEdit_->text(), tr("Ninja 日志 (.ninja_log);;所有文件 (*)"));
+        this, tr("选择 Ninja 日志（按内容识别）"), pathEdit_->text(),
+        tr("所有文件 (*);;Ninja 常用日志名 (.ninja_log)"));
     if (!selected.isEmpty()) {
         pathEdit_->setText(selected);
         analyzePath(selected);
@@ -345,15 +373,69 @@ void MainWindow::selectDirectory()
     }
 }
 
+void MainWindow::exportReport()
+{
+    if (!hasAnalysis_) {
+        reportFailure(tr("请先成功分析一个 Ninja 日志。"), true);
+        return;
+    }
+
+    const QFileInfo sourceInfo(loaded_.logPath);
+    const QString suggestedPath =
+        sourceInfo.dir().filePath(QStringLiteral("ninja-analysis-complete-report.html"));
+    QString selected = QFileDialog::getSaveFileName(
+        this, tr("导出完整分析报告"), suggestedPath, tr("HTML 报告 (*.html)"));
+    if (selected.isEmpty()) {
+        return;
+    }
+    if (QFileInfo(selected).suffix().isEmpty()) {
+        selected.append(QStringLiteral(".html"));
+    }
+    exportReportTo(selected, true);
+}
+
+bool MainWindow::exportReportTo(const QString &path, bool interactive)
+{
+    if (!hasAnalysis_) {
+        return reportFailure(tr("请先成功分析一个 Ninja 日志。"), interactive);
+    }
+
+    AnalysisReportRequest request;
+    request.outputPath = path;
+    request.loaded = loaded_;
+    request.batchIndex = currentBatchIndex_;
+    request.analysis = currentAnalysis_;
+    const AnalysisReportResult result = AnalysisReportExporter::exportHtml(request);
+    if (!result.ok()) {
+        lastError_ = result.error;
+        if (interactive) {
+            QMessageBox::warning(this, tr("无法导出报告"), result.error);
+        }
+        return false;
+    }
+
+    lastError_.clear();
+    lastExportPath_ = result.outputPath;
+    if (interactive) {
+        QMessageBox::information(
+            this, tr("报告导出完成"),
+            tr("完整报告已保存到：\n%1").arg(result.outputPath));
+    }
+    return true;
+}
+
 void MainWindow::showAbout()
 {
     QMessageBox::information(
         this, tr("关于分析口径"),
-        tr(".ninja_log 的开始/结束时间是 Ninja 进程内的相对毫秒。\n\n"
+        tr("Ninja 日志的开始/结束时间是 Ninja 进程内的相对毫秒。\n\n"
            "• 观察窗口：最早任务开始到最晚任务结束。\n"
            "• 累计任务时间：所有任务耗时之和，并行任务会重复计入。\n"
            "• 平均并行度：累计任务时间 ÷ 观察窗口。\n"
+           "• 泳道：为了避免区间遮挡分配的最少显示行，不是 CPU 核心、线程或 worker；"
+           "8 核出现 24 条泳道表示有 24 个重叠区间，可能与 -j、I/O 等待和批次推断有关。\n"
            "• 推断批次：日志行的结束时间发生回退时切分；日志被重整后可能不再对应真实构建。\n"
+           "• 机器负载：显示加载日志时当前分析机器的快照，不是构建时历史负载或 CPU 使用率。\n"
            "• 瓶颈提示：只描述日志可证明的耗时和重叠现象，不是 CPU/I/O 根因，也不是严格关键路径。\n\n"
            "本软件只读本地日志和 build.ninja，不运行构建、不修改文件、不上传数据。"));
 }

@@ -8,6 +8,7 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPaintEvent>
+#include <QSizePolicy>
 #include <QToolTip>
 
 #include <algorithm>
@@ -30,6 +31,7 @@ TimelineWidget::TimelineWidget(QWidget *parent)
 {
     setMouseTracking(true);
     setMinimumWidth(900);
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     setAutoFillBackground(true);
     setAccessibleName(tr("Ninja 任务并发时间线"));
 }
@@ -43,6 +45,7 @@ void TimelineWidget::setRecords(const QVector<NinjaLogRecord> &records)
             .arg(layout_.items.size())
             .arg(layout_.totalInputCount)
             .arg(layout_.laneCount));
+    setMinimumHeight(sizeHint().height());
     updateGeometry();
     update();
 }

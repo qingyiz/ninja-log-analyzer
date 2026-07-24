@@ -14,6 +14,7 @@ TimelinePage::TimelinePage(QWidget *parent)
     layout->setContentsMargins(12, 12, 12, 12);
     statusLabel_ = new QLabel(this);
     statusLabel_->setObjectName(QStringLiteral("timelineStatus"));
+    statusLabel_->setWordWrap(true);
     layout->addWidget(statusLabel_);
     auto *scroll = new QScrollArea(this);
     scroll->setObjectName(QStringLiteral("timelineScroll"));
@@ -35,7 +36,10 @@ void TimelinePage::setRecords(const QVector<ninja_analyzer::NinjaLogRecord> &rec
                 .arg(timeline_->totalRecordCount()));
     } else {
         statusLabel_->setText(
-            tr("%1 个任务分布在 %2 条泳道  ·  横轴是相对构建时间  ·  悬停任务条查看详情")
+            tr("%1 个任务分布在 %2 条泳道。泳道是避免任务条互相遮挡的最少显示行，"
+               "不等于 CPU 核心、线程或 Ninja worker；例如 8 个逻辑处理器出现 24 条泳道，"
+               "只说明存在 24 个重叠区间，可能受 -j、I/O 等待和批次推断影响，日志不能单独"
+               "证明原因。横轴是相对构建时间，可纵向滚动查看全部泳道。")
                 .arg(timeline_->renderedRecordCount())
                 .arg(timeline_->laneCount()));
     }

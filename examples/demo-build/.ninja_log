@@ -1,4 +1,4 @@
-# ninja log v5
+# ninja log v7
 0	420	1720000000000	old/CMakeFiles/core.dir/src/config.cpp.o	1001
 20	580	1720000000100	old/CMakeFiles/core.dir/src/cache.cpp.o	1002
 80	760	1720000000200	old/CMakeFiles/gui.dir/src/window.cpp.o	1003

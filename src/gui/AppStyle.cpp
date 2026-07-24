@@ -55,8 +55,15 @@ QString ninjaAnalyzerStyleSheet()
             min-height: 30px; padding: 3px 10px; border-radius: 5px;
         }
         QPushButton { min-height: 36px; padding: 0 14px; border-radius: 8px; font-weight: 650; }
-        QPushButton#primaryButton { color: white; background: #5B5BD6; border: 1px solid #5B5BD6; }
-        QPushButton#primaryButton:hover { background: #4848C4; }
+        QPushButton#primaryButton, QPushButton#exportReportButton {
+            color: white; background: #5B5BD6; border: 1px solid #5B5BD6;
+        }
+        QPushButton#primaryButton:hover, QPushButton#exportReportButton:hover {
+            background: #4848C4;
+        }
+        QPushButton#primaryButton:disabled, QPushButton#exportReportButton:disabled {
+            color: #A8ADBA; background: #ECEEF3; border-color: #E0E3EA;
+        }
         QPushButton#secondaryButton, QPushButton#ghostButton, QPushButton#compactButton {
             color: #555C6D; background: #FFFFFF; border: 1px solid #D9DDE7;
         }
@@ -65,6 +72,10 @@ QString ninjaAnalyzerStyleSheet()
         QLabel#diagnostics {
             color: #3E665B; background: #F0F9F5; border: 1px solid #D1EDE1;
             border-radius: 8px; padding: 8px 11px;
+        }
+        QLabel#machineLoadContext {
+            color: #526071; background: #F7F9FC; border: 1px solid #E4E8F0;
+            border-radius: 8px; padding: 8px 11px; font-size: 11px;
         }
         QLabel#initialState { color: #838A9A; font-size: 14px; }
         QTabWidget#resultTabs::pane { border: 0; background: #FFFFFF; }

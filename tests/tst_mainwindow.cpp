@@ -8,6 +8,9 @@
 #include <QFileInfo>
 #include <QLabel>
 #include <QLineEdit>
+#include <QPushButton>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QTableView>
 #include <QTableWidget>
 #include <QTabBar>
@@ -31,6 +34,7 @@ class MainWindowTests final : public QObject {
 private slots:
     void loadsSwitchesBatchAndPreservesStateAfterFailure();
     void timelineLayoutUsesNonOverlappingLanesAndLimit();
+    void timelineScrollsAllLanesAndShrinks();
     void usesProjectControlChrome();
     void renderConfiguredDemo();
 };
@@ -40,9 +44,9 @@ void MainWindowTests::loadsSwitchesBatchAndPreservesStateAfterFailure()
     QTemporaryDir temporary;
     QVERIFY(temporary.isValid());
     const QDir root(temporary.path());
-    const QString logPath = root.filePath(QStringLiteral(".ninja_log"));
+    const QString logPath = root.filePath(QStringLiteral("classified-full-rebuild.log"));
     const QByteArray log =
-        "# ninja log v5\n"
+        "# ninja log v7\n"
         "0\t100\t1\tobj/a.cpp.o\t1a\n"
         "10\t200\t1\tobj/b.cpp.o\t1b\n"
         "0\t50\t1\tobj/c.c.o\t1c\n"
@@ -57,11 +61,16 @@ void MainWindowTests::loadsSwitchesBatchAndPreservesStateAfterFailure()
 
     MainWindow window;
     QVERIFY(!window.hasLoadedAnalysis());
+    auto *exportButton =
+        window.findChild<QPushButton *>(QStringLiteral("exportReportButton"));
+    QVERIFY(exportButton);
+    QVERIFY(!exportButton->isEnabled());
     QVERIFY2(window.analyzePath(temporary.path(), false), qPrintable(window.lastError()));
     QVERIFY(window.hasLoadedAnalysis());
     QCOMPARE(window.inferredBatchCount(), 2);
     QCOMPARE(window.currentTaskCount(), 2);
     QCOMPARE(window.filteredTaskCount(), 2);
+    QVERIFY(exportButton->isEnabled());
     const QString successfulPath = window.currentLogPath();
 
     auto *summaryTask = window.findChild<QLabel *>(QStringLiteral("summaryTaskValue"));
@@ -71,6 +80,7 @@ void MainWindowTests::loadsSwitchesBatchAndPreservesStateAfterFailure()
     auto *slowTasks = window.findChild<QTableView *>(QStringLiteral("slowTasksView"));
     auto *categoryFilter = window.findChild<QComboBox *>(QStringLiteral("categoryFilter"));
     auto *search = window.findChild<QLineEdit *>(QStringLiteral("outputSearch"));
+    auto *machineLoad = window.findChild<QLabel *>(QStringLiteral("machineLoadContext"));
     QVERIFY(summaryTask);
     QVERIFY(conclusionTitle);
     QVERIFY(overviewCharts);
@@ -78,9 +88,12 @@ void MainWindowTests::loadsSwitchesBatchAndPreservesStateAfterFailure()
     QVERIFY(slowTasks);
     QVERIFY(categoryFilter);
     QVERIFY(search);
+    QVERIFY(machineLoad);
+    QVERIFY(machineLoad->text().contains(QStringLiteral("不是构建时历史负载")));
     auto *timeline = window.findChild<TimelineWidget *>(QStringLiteral("timelineWidget"));
     QVERIFY(timeline);
     QCOMPARE(summaryTask->text(), QStringLiteral("2"));
+
     QVERIFY(conclusionTitle->text().contains(QStringLiteral("2 个任务")));
     QCOMPARE(categoryTable->rowCount(), 2);
     QCOMPARE(overviewCharts->categoryCount(), 2);
@@ -107,6 +120,14 @@ void MainWindowTests::loadsSwitchesBatchAndPreservesStateAfterFailure()
     QCOMPARE(timeline->renderedRecordCount(), 1);
     QCOMPARE(summaryTask->text(), QStringLiteral("2"));
 
+    const QString filteredReport = root.filePath(QStringLiteral("filtered-ui-full-report.html"));
+    QVERIFY2(window.exportReportTo(filteredReport, false), qPrintable(window.lastError()));
+    QFile report(filteredReport);
+    QVERIFY(report.open(QIODevice::ReadOnly));
+    const QString reportHtml = QString::fromUtf8(report.readAll());
+    QCOMPARE(reportHtml.count(QStringLiteral("data-task-row=\"1\"")), 2);
+    QCOMPARE(window.lastExportPath(), QFileInfo(filteredReport).absoluteFilePath());
+
     categoryFilter->setCurrentIndex(0);
     search->setText(QStringLiteral("app"));
     QCoreApplication::processEvents();
@@ -129,6 +150,7 @@ void MainWindowTests::loadsSwitchesBatchAndPreservesStateAfterFailure()
     window.show();
     QTest::qWait(10);
     QVERIFY(window.centralWidget()->isVisible());
+    QVERIFY(exportButton->isVisible());
 
     QVERIFY(!window.analyzePath(root.filePath(QStringLiteral("missing")), false));
     QCOMPARE(window.currentLogPath(), successfulPath);
@@ -180,6 +202,34 @@ void MainWindowTests::timelineLayoutUsesNonOverlappingLanesAndLimit()
     QCOMPARE(limited.items.size(), TimelineWidget::MaximumRenderedRecords);
     QCOMPARE(limited.totalInputCount, TimelineWidget::MaximumRenderedRecords + 2);
     QVERIFY(limited.truncated);
+}
+
+void MainWindowTests::timelineScrollsAllLanesAndShrinks()
+{
+    QScrollArea scroll;
+    scroll.resize(600, 320);
+    scroll.setWidgetResizable(true);
+    auto *timeline = new TimelineWidget(&scroll);
+    scroll.setWidget(timeline);
+
+    QVector<ninja_analyzer::NinjaLogRecord> overlapping(24);
+    for (int index = 0; index < overlapping.size(); ++index) {
+        overlapping[index].startMs = 0;
+        overlapping[index].endMs = 1000;
+        overlapping[index].output = QStringLiteral("overlap-%1.o").arg(index);
+    }
+    timeline->setRecords(overlapping);
+    scroll.show();
+    QCoreApplication::processEvents();
+    QCOMPARE(timeline->laneCount(), 24);
+    QVERIFY(scroll.verticalScrollBar()->maximum() > 0);
+    scroll.verticalScrollBar()->setValue(scroll.verticalScrollBar()->maximum());
+    QCOMPARE(scroll.verticalScrollBar()->value(), scroll.verticalScrollBar()->maximum());
+
+    timeline->setRecords(QVector<ninja_analyzer::NinjaLogRecord>{overlapping.first()});
+    QCoreApplication::processEvents();
+    QCOMPARE(timeline->laneCount(), 1);
+    QCOMPARE(scroll.verticalScrollBar()->maximum(), 0);
 }
 
 void MainWindowTests::usesProjectControlChrome()

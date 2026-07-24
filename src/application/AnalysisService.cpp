@@ -1,5 +1,6 @@
 #include "application/AnalysisService.h"
 
+#include "application/MachineLoadProbe.h"
 #include "core/BuildAnalyzer.h"
 #include "core/LogLocator.h"
 #include "core/NinjaLogParser.h"
@@ -38,6 +39,7 @@ AnalysisLoadResult AnalysisService::loadLog(const QString &logPath) const
     if (loaded.batches.isEmpty()) {
         return {{}, QStringLiteral("日志没有形成可分析的记录批次。")};
     }
+    loaded.machineLoad = MachineLoadProbe::capture();
 
     return {std::move(loaded), {}};
 }

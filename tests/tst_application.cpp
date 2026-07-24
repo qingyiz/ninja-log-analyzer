@@ -1,4 +1,6 @@
+#include "application/AnalysisReportExporter.h"
 #include "application/AnalysisService.h"
+#include "application/MachineLoadProbe.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -25,6 +27,9 @@ private slots:
     void locatesAndLoadsCompleteAnalysis();
     void rejectsInvalidLogWithoutPartialValue();
     void loadsRepositoryDemo();
+    void capturesMachineLoadSnapshot();
+    void exportsCompleteEscapedHtmlReport();
+    void rejectsInvalidReportRequests();
 };
 
 void AnalysisServiceTests::locatesAndLoadsCompleteAnalysis()
@@ -59,6 +64,9 @@ void AnalysisServiceTests::locatesAndLoadsCompleteAnalysis()
     QVERIFY(result.value.manifest.found());
     QCOMPARE(result.value.records.first().rule, QStringLiteral("CXX_COMPILER"));
     QCOMPARE(result.value.records.first().category, StepCategory::CxxCompile);
+    QVERIFY(result.value.machineLoad.capturedAtUtc.isValid());
+    QVERIFY(!result.value.machineLoad.platformDescription().isEmpty());
+    QVERIFY(!result.value.machineLoad.loadAverageDescription().isEmpty());
 }
 
 void AnalysisServiceTests::rejectsInvalidLogWithoutPartialValue()
@@ -83,10 +91,69 @@ void AnalysisServiceTests::loadsRepositoryDemo()
 
     const AnalysisLoadResult result = AnalysisService().loadLog(demoPath);
     QVERIFY2(result.ok(), qPrintable(result.error));
-    QCOMPARE(result.value.logVersion, 5);
+    QCOMPARE(result.value.logVersion, 7);
     QCOMPARE(result.value.records.size(), 19);
     QCOMPARE(result.value.batches.size(), 2);
     QCOMPARE(result.value.batches.last().recordCount, 14);
+}
+
+void AnalysisServiceTests::capturesMachineLoadSnapshot()
+{
+    const MachineLoadSnapshot snapshot = MachineLoadProbe::capture();
+    QVERIFY(snapshot.capturedAtUtc.isValid());
+    QCOMPARE(snapshot.capturedAtUtc.timeSpec(), Qt::UTC);
+    QVERIFY(snapshot.logicalProcessorCount != 0);
+    QVERIFY(!snapshot.platformDescription().isEmpty());
+    QVERIFY(!snapshot.loadAverageDescription().isEmpty());
+    QVERIFY(MachineLoadSnapshot::limitationText().contains(QStringLiteral("不是构建时")));
+    if (!snapshot.loadAverageAvailable) {
+        QVERIFY(snapshot.loadAverageDescription().contains(QStringLiteral("不可用")));
+    }
+}
+
+void AnalysisServiceTests::exportsCompleteEscapedHtmlReport()
+{
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    const QDir root(temporary.path());
+    const QString logPath = root.filePath(QStringLiteral("renamed-build-log.txt"));
+    QVERIFY(writeText(logPath,
+                      "# ninja log v7\n"
+                      "0\t100\t1\tobj/<one>&.o\t1a\n"
+                      "10\t250\t1\tbin/two\t1b\n"));
+
+    const AnalysisService service;
+    const AnalysisLoadResult loaded = service.loadLog(logPath);
+    QVERIFY2(loaded.ok(), qPrintable(loaded.error));
+    const QVector<NinjaLogRecord> records = service.recordsForBatch(loaded.value, -1);
+
+    AnalysisReportRequest request;
+    request.outputPath = root.filePath(QStringLiteral("complete-report.html"));
+    request.loaded = loaded.value;
+    request.batchIndex = -1;
+    request.analysis = service.analyze(records);
+    const AnalysisReportResult exported = AnalysisReportExporter::exportHtml(request);
+    QVERIFY2(exported.ok(), qPrintable(exported.error));
+
+    QFile report(exported.outputPath);
+    QVERIFY(report.open(QIODevice::ReadOnly));
+    const QString html = QString::fromUtf8(report.readAll());
+    QVERIFY(html.contains(QStringLiteral("Ninja 构建完整分析报告")));
+    QVERIFY(html.contains(QStringLiteral("Ninja log v7")));
+    QVERIFY(html.contains(QStringLiteral("分析机器负载快照")));
+    QVERIFY(html.contains(QStringLiteral("泳道是为了")));
+    QCOMPARE(html.count(QStringLiteral("data-task-row=\"1\"")), 2);
+    QVERIFY(html.contains(QStringLiteral("obj/&lt;one&gt;&amp;.o")));
+    QVERIFY(!html.contains(QStringLiteral("obj/<one>&.o")));
+}
+
+void AnalysisServiceTests::rejectsInvalidReportRequests()
+{
+    AnalysisReportRequest empty;
+    QVERIFY(!AnalysisReportExporter::exportHtml(empty).ok());
+
+    empty.outputPath = QStringLiteral("/this/path/does/not/exist/report.html");
+    QVERIFY(!AnalysisReportExporter::exportHtml(empty).ok());
 }
 
 int main(int argc, char *argv[])

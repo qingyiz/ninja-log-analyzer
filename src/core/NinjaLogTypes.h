@@ -35,7 +35,7 @@ struct NinjaLogRecord {
     QString output;
     QString commandField;
     int sourceLine = 0;
-    bool hasV5Hash = false;
+    bool hasCommandHash = false;
     quint64 commandHash = 0;
     QString rule;
     StepCategory category = StepCategory::Other;

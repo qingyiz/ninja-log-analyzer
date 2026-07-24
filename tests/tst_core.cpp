@@ -43,6 +43,7 @@ private slots:
     void locatorAcceptsFileAndSortsNestedLogs();
     void locatorReportsInvalidInputs();
     void parserReadsV5CrLfAndPreservesInput();
+    void parserReadsV7CommandHash();
     void parserReadsV4CommandWithTabs();
     void parserIsolatesMalformedLines();
     void parserReportsFatalFormatErrors();
@@ -77,10 +78,11 @@ void CoreTests::locatorAcceptsFileAndSortsNestedLogs()
     QVERIFY(root.mkpath(QStringLiteral("z-build")));
     QVERIFY(root.mkpath(QStringLiteral("a-build/deep")));
 
-    const QString first = root.filePath(QStringLiteral("a-build/deep/.ninja_log"));
-    const QString second = root.filePath(QStringLiteral("z-build/.ninja_log"));
+    const QString first = root.filePath(QStringLiteral("a-build/deep/classified-build.log"));
+    const QString second = root.filePath(QStringLiteral("z-build/saved-without-extension"));
     QVERIFY(writeBytes(first, "# ninja log v5\n"));
-    QVERIFY(writeBytes(second, "# ninja log v5\n"));
+    QVERIFY(writeBytes(second, "# ninja log v7\n"));
+    QVERIFY(writeBytes(root.filePath(QStringLiteral("ignore.txt")), "not ninja\n"));
 
     const LocateResult directoryResult = LogLocator::resolve(temporary.path());
     QVERIFY2(directoryResult.ok(), qPrintable(directoryResult.error));
@@ -125,9 +127,31 @@ void CoreTests::parserReadsV5CrLfAndPreservesInput()
     QCOMPARE(result.records.at(0).sourceLine, 2);
     QCOMPARE(result.records.at(0).output, QStringLiteral("obj/a file.cpp.o"));
     QCOMPARE(result.records.at(0).commandHash, quint64(0xabc123));
-    QVERIFY(result.records.at(0).hasV5Hash);
+    QVERIFY(result.records.at(0).hasCommandHash);
     QCOMPARE(result.records.at(1).durationMs(), qint64(1000));
     QCOMPARE(readBytes(logPath), contents);
+}
+
+void CoreTests::parserReadsV7CommandHash()
+{
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    const QString logPath =
+        QDir(temporary.path()).filePath(QStringLiteral("2026-07-24-full-rebuild.log"));
+    const QByteArray contents =
+        "# ninja log v7\n"
+        "5\t1005\t1700000000\tobj/v7.cpp.o\tF00dBeef\n"
+        "0\t10\t1700000001\tobj/bad-v7.o\tnot-hex\n";
+    QVERIFY(writeBytes(logPath, contents));
+
+    const ParseResult result = NinjaLogParser::parse(logPath);
+    QVERIFY2(result.ok(), qPrintable(result.fatalError));
+    QCOMPARE(result.version, 7);
+    QCOMPARE(result.records.size(), 1);
+    QCOMPARE(result.warnings.size(), 1);
+    QVERIFY(result.records.first().hasCommandHash);
+    QCOMPARE(result.records.first().commandHash, quint64(0xf00dbeef));
+    QCOMPARE(result.records.first().durationMs(), qint64(1000));
 }
 
 void CoreTests::parserReadsV4CommandWithTabs()
@@ -146,7 +170,7 @@ void CoreTests::parserReadsV4CommandWithTabs()
     QCOMPARE(result.records.size(), 1);
     QCOMPARE(result.records.first().commandField,
              QStringLiteral("clang\t-DVALUE=1 -c a.c"));
-    QVERIFY(!result.records.first().hasV5Hash);
+    QVERIFY(!result.records.first().hasCommandHash);
 }
 
 void CoreTests::parserIsolatesMalformedLines()
@@ -190,8 +214,10 @@ void CoreTests::parserReportsFatalFormatErrors()
 
     const QString unsupported = root.filePath(QStringLiteral("unsupported/.ninja_log"));
     QVERIFY(QDir().mkpath(QFileInfo(unsupported).absolutePath()));
-    QVERIFY(writeBytes(unsupported, "# ninja log v3\n0\t1\t2\ta.o\tff\n"));
-    QVERIFY(!NinjaLogParser::parse(unsupported).ok());
+    QVERIFY(writeBytes(unsupported, "# ninja log v6\n0\t1\t2\ta.o\tff\n"));
+    const ParseResult unsupportedResult = NinjaLogParser::parse(unsupported);
+    QVERIFY(!unsupportedResult.ok());
+    QVERIFY(unsupportedResult.fatalError.contains(QStringLiteral("v4、v5 和 v7")));
 
     const QString noValidRows = root.filePath(QStringLiteral("bad-rows/.ninja_log"));
     QVERIFY(QDir().mkpath(QFileInfo(noValidRows).absolutePath()));

@@ -3,11 +3,11 @@
 <!-- BEGIN CODEX SPEC -->
 ## 当前 Codex Spec
 
-后续 AI 在分析、设计、编码、测试或审查前，必须按顺序读取并遵循当前 Spec：`ninja-log-analyzer-060-refactor`。
+后续 AI 在分析、设计、编码、测试或审查前，必须按顺序读取并遵循当前 Spec：`ninja-log-analysis-enhancements`。
 
-1. 需求文档：`.codex/specs/ninja-log-analyzer-060-refactor/requirements.md`
-2. 设计文档：`.codex/specs/ninja-log-analyzer-060-refactor/design.md`
-3. 任务文档：`.codex/specs/ninja-log-analyzer-060-refactor/tasks.md`
+1. 需求文档：`.codex/specs/ninja-log-analysis-enhancements/requirements.md`
+2. 设计文档：`.codex/specs/ninja-log-analysis-enhancements/design.md`
+3. 任务文档：`.codex/specs/ninja-log-analysis-enhancements/tasks.md`
 
 执行规则：
 
